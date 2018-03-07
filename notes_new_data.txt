@@ -1,0 +1,33 @@
+Significant change to Rockport storage  (RES2)
+Median increase of 5,073
+
+Small increase in East Canyon (Res5)
++ 25 (median
+
+
+Res 1 has a mean increase of 830, but no change to median
+Res 3 ""  of 327, ""
+Res 4 "" of 2991, ""
+Res 7 "" 643, ""
+Res 8   2645, ""
+
+Absolutely no effect on Res 6
+
+
+
+Noticeable decrease of delivery to SA1 (median 1535, mean 1678)
+Strangely, no real change in SA10 requests
+
+
+
+No change to HW, WW
+Base - 10 months move from triggers to non-trigger, 1 fewer extreme (1.39->1.11), 3 fewer severe, 6 fewer moderate
+WD - 9 months move from triggers to non-trigger, 3 fewer extreme (8.89-8.06), 3 fewer severe, 3 fewer moderate
+HW - 13 months move from triggers to non-trigger, 4 fewer extreme (13.33-12.22), 7 fewer severe, 2 fewer moderate
+
+
+
+
+
+
+- that's about it
