@@ -71,6 +71,43 @@ require(lubridate)
 require(reshape2)
 require(scales)
 
+
+
+###########################################################################
+###  Hashimoto Vulnerability Function
+###########################################################################
+hash_perform <- function(site, demand,  delivery){
+### Follows Hashimoto, T., Stedinger, J.R., Loucks, D.P., 1982. Reliability, resiliency, and vulnerability criteria for water resource system performance evaluation. Water Resour. Res. 18, 14–20. https://doi.org/10.1029/WR018i001p00014
+### Also used https://agupubs.onlinelibrary.wiley.com/doi/epdf/10.1029/2002WR001778
+demand <- demand[,names(demand) %in% site]
+delivery <- delivery[,names(delivery) %in% site]
+
+shortage <- demand - delivery
+
+sat <- shortage <= 0
+unsat <- shortage > 0
+
+sat_lag <- c(sat[seq(2, length(sat))], NA)
+w_trans <- unsat == TRUE & sat_lag == TRUE
+
+time_length <- sum(!is.na(shortage))
+
+### Reliability
+### Fraction of time that demand is met
+reliability <- sum(sat, na.rm=TRUE)/time_length
+
+### Resilience
+### Average probability of recovery in any given failure time step
+resilience <- sum(w_trans, na.rm=TRUE)/ (time_length - sum(sat, na.rm=TRUE))
+
+### Vulnerability
+### Maximum shortage
+vulnerability <- max(shortage, na.rm=TRUE)
+
+return(list(reliability=reliability, resilience=resilience, vulnerability = vulnerability))
+}
+
+
 ###########################################################################
 ## Set Initial Values
 ###########################################################################
@@ -281,190 +318,6 @@ demand_deliv_df$shortage[demand_deliv_df$demand == 0] <- NA
 ### Calculate percent shortage
 demand_deliv_df$shortage_perc <- demand_deliv_df$shortage/demand_deliv_df$demand
 
-#############################################################
-###  Quick Check Plots
-#############################################################
-demand_deliv_plot <- demand_deliv_df[demand_deliv_df$data %in% c("paleo", "observed", "hd"),]
-
-### To plot
-p <- ggplot(demand_deliv_plot, aes(x=date, y=shortage))
-p <- p + geom_line(aes(group=data), size=0.12)
-p <- p + theme_classic_new()
-p <- p + coord_cartesian(xlim=c(as.Date("1428-01-01"), as.Date("2070-01-01")), expand=FALSE) #ylim=c(0,1), 
-p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="50 years"), date_labels = "%Y")
-p <- p + scale_y_continuous(name="Shortage (ac-ft)")
-p <- p + theme(legend.position="bottom")
-p <- p + theme(axis.text.x = element_text(angle = 40, hjust = 1))
-p <- p + facet_wrap(~variable, nrow = 4)
-p
-
-
-### Save figures
-ggsave(file.path(write_output_base_path,"Shortage_all_facets.png"),  p, width=14, height=6.5, dpi=300)
-ggsave(file.path(write_output_base_path,"Shortage_all_facets.pdf"),  p, width=14, height=6.5)
-ggsave(file.path(write_output_base_path,"Shortage_all_facets.svg"),  p, width=14, height=6.5)
-
-
-### To plot
-p <- ggplot(demand_deliv_plot, aes(x=date, y=shortage_perc))
-p <- p + geom_line(aes(group=data), size=0.12)
-p <- p + theme_classic_new()
-p <- p + coord_cartesian(xlim=c(as.Date("1428-01-01"), as.Date("2070-01-01")), expand=FALSE) #ylim=c(0,1), 
-p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="50 years"), date_labels = "%Y")
-p <- p + scale_y_continuous(name="Shorage (% of Demand)", breaks=seq(0,1,0.1), labels=percent)
-p <- p + theme(legend.position="bottom")
-p <- p + facet_wrap(~variable, nrow = 4)
-p
-
-
-### Save figures
-ggsave(file.path(write_output_base_path,"Shortage_perc_all_facets.png"),  p, width=14, height=6.5, dpi=300)
-ggsave(file.path(write_output_base_path,"Shortage_perc_all_facets.pdf"),  p, width=14, height=6.5)
-ggsave(file.path(write_output_base_path,"Shortage_perc_all_facets.svg"),  p, width=14, height=6.5)
-
-
-### To plot
-p <- ggplot(demand_deliv_plot, aes(x=date))
-p <- p + geom_line(aes(group=data, y=demand), size=0.12, colour="grey20")
-p <- p + geom_line(aes(group=data, y=deliv), size=0.12, colour="blue")
-#p <- p + geom_line(aes(group=data, y=request), size=0.12, colour="red")
-p <- p + theme_classic_new()
-p <- p + coord_cartesian(xlim=c(as.Date("1428-01-01"), as.Date("2070-01-01")), expand=FALSE) #ylim=c(0,1), 
-p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="50 years"), date_labels = "%Y")
-p <- p + scale_y_continuous(name="Shortage (Demand - Delivery)")
-p <- p + theme(legend.position="bottom")
-p <- p + facet_wrap(~variable, nrow = 4)
-p
-
-
-
-#############################################################
-###  Check SA1
-#############################################################
-sa1_plot <- subset(demand_deliv_plot, variable=="SA1")
-
-### To plot
-p <- ggplot(sa1_plot, aes(x=date))
-p <- p + geom_line(aes(group=data, y=demand), size=0.12, colour="grey20")
-p <- p + geom_line(aes(group=data, y=deliv), size=0.12, colour="blue")
-p <- p + theme_classic_new()
-p <- p + coord_cartesian(xlim=c(as.Date("1428-01-01"), as.Date("2070-01-01")), expand=FALSE) #ylim=c(0,1), 
-p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="50 years"), date_labels = "%Y")
-p <- p + scale_y_continuous(name="Shortage (Demand - Delivery)")
-p <- p + theme(legend.position="bottom")
-#p <- p + facet_wrap(~variable, nrow = 4)
-p
-
-
-
-
-#############################################################
-###  Check SA12
-#############################################################
-sa1_plot <- subset(demand_deliv_plot, variable=="SA12")
-
-### To plot
-p <- ggplot(sa1_plot, aes(x=date))
-p <- p + geom_line(aes(group=data, y=demand), size=0.12, colour="grey20")
-p <- p + geom_line(aes(group=data, y=deliv), size=0.12, colour="blue")
-p <- p + theme_classic_new()
-p <- p + coord_cartesian(xlim=c(as.Date("1428-01-01"), as.Date("2070-01-01")), expand=FALSE) #ylim=c(0,1), 
-p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="50 years"), date_labels = "%Y")
-p <- p + scale_y_continuous(name="Shortage (Demand - Delivery)")
-p <- p + theme(legend.position="bottom")
-#p <- p + facet_wrap(~variable, nrow = 4)
-p
-
-
-### To plot
-p <- ggplot(sa1_plot, aes(x=month, group=year))
-p <- p + geom_line(aes(y=shortage), size=0.12, colour="grey20")
-p <- p + theme_classic_new()
-#p <- p + coord_cartesian(xlim=c(as.Date("1428-01-01"), as.Date("2070-01-01")), expand=FALSE) #ylim=c(0,1), 
-#p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="50 years"), date_labels = "%Y")
-p <- p + scale_y_continuous(name="Shortage (Demand - Delivery)")
-p <- p + theme(legend.position="bottom")
-#p <- p + facet_wrap(~variable, nrow = 4)
-p
-
-
-
-#############################################################
-###  Check SA14
-#############################################################
-sa1_plot <- subset(demand_deliv_plot, variable=="SA14")
-
-### To plot
-p <- ggplot(sa1_plot, aes(x=date))
-p <- p + geom_line(aes(group=data, y=demand), size=0.12, colour="grey20")
-p <- p + geom_line(aes(group=data, y=deliv), size=0.12, colour="blue")
-p <- p + theme_classic_new()
-p <- p + coord_cartesian(xlim=c(as.Date("1428-01-01"), as.Date("2070-01-01")), expand=FALSE) #ylim=c(0,1), 
-p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="50 years"), date_labels = "%Y")
-p <- p + scale_y_continuous(name="Shortage (Demand - Delivery)")
-p <- p + theme(legend.position="bottom")
-#p <- p + facet_wrap(~variable, nrow = 4)
-p
-
-
-### To plot
-p <- ggplot(sa1_plot, aes(x=month, group=year))
-p <- p + geom_line(aes(y=shortage), size=0.12, colour="grey20")
-p <- p + theme_classic_new()
-#p <- p + coord_cartesian(xlim=c(as.Date("1428-01-01"), as.Date("2070-01-01")), expand=FALSE) #ylim=c(0,1), 
-#p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="50 years"), date_labels = "%Y")
-p <- p + scale_y_continuous(name="Shortage (Demand - Delivery)")
-p <- p + theme(legend.position="bottom")
-#p <- p + facet_wrap(~variable, nrow = 4)
-p
-
-
-
-
-#############################################################
-###  Check SA10
-#############################################################
-sa10_plot <- subset(demand_deliv_plot, variable=="SA10")
-#sa10_plot <- sa10_plot[,c(4, 5, 8, 10)] #9, 
-#sa10_plot <- melt(sa10_plot, c("date", "data"))
-
-### To plot
-p <- ggplot(sa10_plot, aes(x=date))
-p <- p + geom_line(aes(group=data, y=demand), size=0.12, colour="grey20")
-p <- p + geom_line(aes(group=data, y=deliv), size=0.12, colour="blue")
-p <- p + theme_classic_new()
-p <- p + coord_cartesian(xlim=c(as.Date("1428-01-01"), as.Date("2070-01-01")), expand=FALSE) #ylim=c(0,1), 
-p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="50 years"), date_labels = "%Y")
-p <- p + scale_y_continuous(name="Delivery (Ac-ft)")
-p <- p + theme(legend.position="bottom")
-#p <- p + facet_wrap(~variable, nrow = 4)
-p
-
-### Save figures
-ggsave(file.path(write_output_base_path,"SA10_deliv_demand.png"),  p, width=8, height=4.5, dpi=300)
-ggsave(file.path(write_output_base_path,"SA10_deliv_demand.pdf"),  p, width=8, height=4.5)
-ggsave(file.path(write_output_base_path,"SA10_deliv_demand.svg"),  p, width=8, height=4.5)
-
-
-
-sa10_plot <- subset(demand_deliv_plot, variable=="SA10")
-sa10_plot <- sa10_plot[,c(4, 5, 8, 10)] #9, 
-sa10_plot <- melt(sa10_plot, c("date", "data"))
-### Sort by node and then id
-sa10_plot <- sa10_plot[order(sa10_plot$variable, sa10_plot$data ,sa10_plot$date),] 
-
-### To plot
-p <- ggplot(sa10_plot, aes(x=date))
-p <- p + geom_line(aes(group=data, colour=variable, y=value), size=0.12)
-#p <- p + geom_line(aes(group=data, y=deliv), size=0.12, colour="blue")
-p <- p + theme_classic_new()
-p <- p + scale_colour_manual(values=c("black", "red"))
-p <- p + coord_cartesian(xlim=c(as.Date("1428-01-01"), as.Date("2070-01-01")), expand=FALSE) #ylim=c(0,1), 
-p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="50 years"), date_labels = "%Y")
-p <- p + scale_y_continuous(name="Delivery (ac-ft)")
-p <- p + theme(legend.position="bottom")
-#p <- p + facet_wrap(~variable, nrow = 4)
-p
 
 #############################################################
 ###  Check System Shortages
@@ -482,156 +335,13 @@ shortage_wide$system <- apply(shortage_wide[,!names(shortage_wide) %in% c("date"
 
 
 
-p <- ggplot(subset(shortage_system, data=="hd" | data=="paleo" | data=="observed"), aes(x=date, colour=data, y=./1000))
-p <- p + geom_line()
-#p <- p + geom_line(aes(group=data, y=deliv), size=0.12, colour="blue")
-p <- p + theme_classic_new()
-#p <- p + scale_colour_manual(name="Scenario", values= c("grey30", "#CC79A7", "#E69F00", "#0072B2"), labels=c("Observed", "Reconstr", "WD", "WW"), guide = guide_legend())
-p <- p + scale_colour_manual(name="Scenario", values= c("#D55E00", "grey30", "#CC79A7"), breaks=c("hd", "observed", "paleo"), labels=c("HD", "Observed", "Reconstr"), guide = guide_legend())
-#p <- p + scale_colour_manual(values=c("black", "red"))
-p <- p + coord_cartesian(xlim=c(as.Date("1428-01-01"), as.Date("2070-01-01")), expand=FALSE) #ylim=c(0,1), 
-p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="50 years"), date_labels = "%Y")
-p <- p + scale_y_continuous(name="Shortage (1,000 ac-ft)")
-p <- p + theme(legend.position="bottom")
-#p <- p + facet_wrap(~variable, nrow = 4)
-p
-
-
-### Save figures
-ggsave(file.path(write_output_base_path,"paleo_future_system_shortage_acft_hot.png"),  p, width=8, height=4.5, dpi=300)
-ggsave(file.path(write_output_base_path,"paleo_future_system_shortage_acft_hot.pdf"),  p, width=8, height=3.5)
-ggsave(file.path(write_output_base_path,"paleo_future_system_shortage_acft_hot.svg"),  p, width=8, height=3.5)
-
-
-
-#############################################################
-###  Plot requests
-#############################################################
-### It looks like there is a significant difference between paleo and climate change requests at SA 1 and SA10
-
-p <- ggplot(request_all, aes(x=month, group=wy))
-p <- p + geom_line(aes(y=SA1, colour=data), size=0.12)
-p <- p + theme_classic_new()
-#p <- p + coord_cartesian(xlim=c(as.Date("1428-01-01"), as.Date("2070-01-01")), expand=FALSE) #ylim=c(0,1), 
-#p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="50 years"), date_labels = "%Y")
-p <- p + scale_y_continuous(name="Request")
-p <- p + theme(legend.position="bottom")
-p <- p + facet_wrap(~data, nrow = 4)
-p
-
-
-### Make months a factor
-demand_df$month_adj_forplot <- c(seq(4, 12), seq(1,3))
-
-### Make months a factor
-demand_df$month_adj_forplot <- c(seq(4, 12), seq(1,3))
-
-p <- ggplot(request_all, aes(x=month))
-p <- p + geom_boxplot(aes(y=SA1, colour=data))
-#p <- p + geom_line(data=demand_df, aes(x=month_adj_forplot, y=SA1), colour="black")
-p <- p + theme_classic_new()
-#p <- p + coord_cartesian(xlim=c(as.Date("1428-01-01"), as.Date("2070-01-01")), expand=FALSE) #ylim=c(0,1), 
-#p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="50 years"), date_labels = "%Y")
-p <- p + scale_y_continuous(name="Request")
-p <- p + theme(legend.position="bottom")
-p
-
-### Funky - April requests are always exactly the same for entire Paleo run.
-### Climate change runs vary across scenarios, but each climate change run has the same number, but different for each scenario.
-
-
-#############################################################
-###  Do calculations regionally
-#############################################################
-
-
-
 #############################################################
 ###  Run Hashimoto calculations
 #############################################################
-
-hash_perform <- function(demand,  delivery){
-### Follows Hashimoto, T., Stedinger, J.R., Loucks, D.P., 1982. Reliability, resiliency, and vulnerability criteria for water resource system performance evaluation. Water Resour. Res. 18, 14–20. https://doi.org/10.1029/WR018i001p00014
-### Also used https://agupubs.onlinelibrary.wiley.com/doi/epdf/10.1029/2002WR001778
-shortage <- demand - delivery
-
-sat <- shortage <= 0
-unsat <- shortage > 0
-
-sat_lag <- c(sat[seq(2, length(sat))], NA)
-w_trans <- unsat == TRUE & sat_lag == TRUE
-
-time_length <- sum(!is.na(shortage))
-
-### Reliability
-### Fraction of time that demand is met
-reliability <- sum(sat, na.rm=TRUE)/time_length
-
-### Resilience
-### Average probability of recovery in any given failure time step
-resilience <- sum(w_trans, na.rm=TRUE)/ (time_length - sum(sat, na.rm=TRUE))
-
-### Vulnerability
-### Maximum shortage
-vulnerability <- max(shortage, na.rm=TRUE)
-
-return(list(reliability=reliability, resilience=resilience, vulnerability = vulnerability))
-}
-
-
-
-
-
-
-hash_perform(demand=demand_wide$SA2[demand_wide$data == "paleo"], delivery=deliv_wide$SA2[deliv_wide$data == "paleo"])
-
-hash_perform(demand=demand_wide$SA3[demand_wide$data == "paleo"], delivery=deliv_wide$SA3[deliv_wide$data == "paleo"])
-
-hash_perform(demand=demand_wide$SA4[demand_wide$data == "paleo"], delivery=deliv_wide$SA4[deliv_wide$data == "paleo"])
-
-hash_perform(demand=demand_wide$SA5[demand_wide$data == "paleo"], delivery=deliv_wide$SA5[deliv_wide$data == "paleo"])
-
-hash_perform(demand=demand_wide$SA6[demand_wide$data == "paleo"], delivery=deliv_wide$SA6[deliv_wide$data == "paleo"])
-
-
-
-
-
-
-hash_perform <- function(site, demand,  delivery){
-### Follows Hashimoto, T., Stedinger, J.R., Loucks, D.P., 1982. Reliability, resiliency, and vulnerability criteria for water resource system performance evaluation. Water Resour. Res. 18, 14–20. https://doi.org/10.1029/WR018i001p00014
-### Also used https://agupubs.onlinelibrary.wiley.com/doi/epdf/10.1029/2002WR001778
-demand <- demand[,names(demand) %in% site]
-delivery <- delivery[,names(delivery) %in% site]
-
-shortage <- demand - delivery
-
-sat <- shortage <= 0
-unsat <- shortage > 0
-
-sat_lag <- c(sat[seq(2, length(sat))], NA)
-w_trans <- unsat == TRUE & sat_lag == TRUE
-
-time_length <- sum(!is.na(shortage))
-
-### Reliability
-### Fraction of time that demand is met
-reliability <- sum(sat, na.rm=TRUE)/time_length
-
-### Resilience
-### Average probability of recovery in any given failure time step
-resilience <- sum(w_trans, na.rm=TRUE)/ (time_length - sum(sat, na.rm=TRUE))
-
-### Vulnerability
-### Maximum shortage
-vulnerability <- max(shortage, na.rm=TRUE)
-
-return(list(reliability=reliability, resilience=resilience, vulnerability = vulnerability))
-}
-
 site_names <- c(paste0("SA", seq(1,20)), "system")
 data_names <- levels(demand_wide$data)
 
+### Loop through all data sites and calculate Hashimoto vulnerabilities
 for (i in seq(1,length(data_names))){
 	data_i <- data_names[[i]]
 	
@@ -647,6 +357,7 @@ for (i in seq(1,length(data_names))){
 	}
 }
 
+### Reorganize results
 hash_df$reliability <- as.numeric(hash_df$reliability)
 hash_df$resilience <- as.numeric(hash_df$resilience)
 hash_df$vulnerability <- as.numeric(hash_df$vulnerability)
@@ -655,61 +366,17 @@ hash_df$site <- factor(hash_df$site, levels=c(paste0("SA", seq(1,20)),"system"))
 
 
 
-p <- ggplot(subset(hash_df, data=="SA2"), aes(x=site, y=resilience))
-p <- p + geom_bar()
-p <- p + theme_classic()
-p
 
-
-p <- ggplot(hash_df, aes(x=site, y=resilience, fill=data))
-p <- p +  geom_bar(position="dodge", stat="identity")
-p <- p + theme_classic()
-p
-
-
-p <- ggplot(hash_df, aes(x=site, y=reliability, fill=data))
-p <- p +  geom_bar(position="dodge", stat="identity")
-p <- p + scale_fill_manual(name="Scenario", values= c("green", "black", "grey30", "orange", "red"), limits=c("paleo", "observed", "base", "hw", "hd"), guide = guide_legend())
-p <- p + theme_classic()
-p
-
-p <- ggplot(subset(hash_df, data= c("paleo", "observed", "base", "hw", "hd")), aes(x=site, y=resilience, fill=data))
-p <- p +  geom_bar(position="dodge", stat="identity")
-p <- p + scale_fill_manual(name="Scenario", values= c("green", "black", "grey30", "orange", "red"), limits=c("paleo", "observed", "base", "hw", "hd"), guide = guide_legend())
-p <- p + theme_classic()
-p
-
-
-
-p <- ggplot(hash_df[hash_df$data %in% c("paleo", "observed", "base", "hw", "hd"), ], aes(x=site, y=resilience, fill=data))
-p <- p +  geom_bar(position="dodge", stat="identity")
-p <- p + scale_fill_manual(name="Scenario", values= c("green", "black", "grey30", "orange", "red"), limits=c("paleo", "observed", "base", "hw", "hd"), guide = guide_legend())
-p <- p + theme_classic()
-p
-
-
-p <- ggplot(hash_df[hash_df$data %in% c("paleo", "observed", "base", "hw", "hd"), ], aes(x=site, y=reliability, fill=data))
-p <- p +  geom_bar(position="dodge", stat="identity")
-p <- p + scale_fill_manual(name="Scenario", values= c("green", "black", "grey30", "orange", "red"), limits=c("paleo", "observed", "base", "hw", "hd"), guide = guide_legend())
-p <- p + theme_classic()
-p
-
-
-p <- ggplot(hash_df[hash_df$data %in% c("paleo", "observed", "base", "hw", "hd"), ], aes(x=site, y=vulnerability, fill=data))
-p <- p +  geom_bar(position="dodge", stat="identity")
-p <- p + scale_fill_manual(name="Scenario", values= c("green", "black", "grey30", "orange", "red"), limits=c("paleo", "observed", "base", "hw", "hd"), guide = guide_legend())
-p <- p + theme_classic()
-p
-
-
-
-labels=c( "Observed", "Reconstr", "Climate Change (HD)"), 
+###########################################################################
+## Save Workspace
+###########################################################################
+save.image(file.path(weber_output_path, "weber_delivery_output.RData"))
 
 
 
 
 
-sapply(site_names, hash_perform, demand=demand_wide[demand_wide$data=="paleo",], delivery=deliv_wide[deliv_wide$data=="paleo",])
 
-sapply(site_names, hash_perform, demand=demand_wide[demand_wide$data=="hd",], delivery=deliv_wide[deliv_wide$data=="hd",])
+
+
 
