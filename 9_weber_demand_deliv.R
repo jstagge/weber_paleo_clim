@@ -466,10 +466,42 @@ p <- p + theme(legend.position="bottom")
 #p <- p + facet_wrap(~variable, nrow = 4)
 p
 
+#############################################################
+###  Check System Shortages
+#############################################################
+deliv_wide <-    dcast(demand_deliv_df, date + data ~ variable, value.var="deliv", fun.aggregate = sum, na.rm=TRUE)
+demand_wide <-    dcast(demand_deliv_df, date + data ~ variable, value.var="demand", fun.aggregate = sum, na.rm=TRUE)
+shortage_wide <-    dcast(demand_deliv_df, date + data ~ variable, value.var="shortage", fun.aggregate = sum, na.rm=TRUE)
+
+shortage_system <-    dcast(demand_deliv_df, date + data ~ ., value.var="shortage", fun.aggregate = sum, na.rm=TRUE)
+
+### Add column for system
+deliv_wide$system <- apply(deliv_wide[,!names(deliv_wide) %in% c("date", "data")], 1, sum, na.rm=TRUE)
+demand_wide$system <- apply(demand_wide[,!names(demand_wide) %in% c("date", "data")], 1, sum, na.rm=TRUE)
+shortage_wide$system <- apply(shortage_wide[,!names(shortage_wide) %in% c("date", "data")], 1, sum, na.rm=TRUE)
+
+
+
+p <- ggplot(subset(shortage_system, data=="hd" | data=="paleo" | data=="observed"), aes(x=date, colour=data, y=./1000))
+p <- p + geom_line()
+#p <- p + geom_line(aes(group=data, y=deliv), size=0.12, colour="blue")
+p <- p + theme_classic_new()
+#p <- p + scale_colour_manual(name="Scenario", values= c("grey30", "#CC79A7", "#E69F00", "#0072B2"), labels=c("Observed", "Reconstr", "WD", "WW"), guide = guide_legend())
+p <- p + scale_colour_manual(name="Scenario", values= c("#D55E00", "grey30", "#CC79A7"), breaks=c("hd", "observed", "paleo"), labels=c("HD", "Observed", "Reconstr"), guide = guide_legend())
+#p <- p + scale_colour_manual(values=c("black", "red"))
+p <- p + coord_cartesian(xlim=c(as.Date("1428-01-01"), as.Date("2070-01-01")), expand=FALSE) #ylim=c(0,1), 
+p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="50 years"), date_labels = "%Y")
+p <- p + scale_y_continuous(name="Shortage (1,000 ac-ft)")
+p <- p + theme(legend.position="bottom")
+#p <- p + facet_wrap(~variable, nrow = 4)
+p
+
+
 ### Save figures
-ggsave(file.path(write_output_base_path,"Shortage_all_facets.png"),  p, width=14, height=6.5, dpi=300)
-ggsave(file.path(write_output_base_path,"Shortage_all_facets.pdf"),  p, width=14, height=6.5)
-ggsave(file.path(write_output_base_path,"Shortage_all_facets.svg"),  p, width=14, height=6.5)
+ggsave(file.path(write_output_base_path,"paleo_future_system_shortage_acft_hot.png"),  p, width=8, height=4.5, dpi=300)
+ggsave(file.path(write_output_base_path,"paleo_future_system_shortage_acft_hot.pdf"),  p, width=8, height=3.5)
+ggsave(file.path(write_output_base_path,"paleo_future_system_shortage_acft_hot.svg"),  p, width=8, height=3.5)
+
 
 
 #############################################################
@@ -514,839 +546,170 @@ p
 
 
 
-###########################################################################
-###  Calculate Percent Storage
-###########################################################################
-stor_percent <- stor_all
-res_test <- names(stor_percent) %in% paste0("res_", seq(1,10))
+#############################################################
+###  Run Hashimoto calculations
+#############################################################
 
-### Divide each reservoir by its total storage
-stor_percent[,res_test] <- sweep(stor_percent[,res_test], 2, c(total_storage$Total, NA, NA), "/")
+hash_perform <- function(demand,  delivery){
+### Follows Hashimoto, T., Stedinger, J.R., Loucks, D.P., 1982. Reliability, resiliency, and vulnerability criteria for water resource system performance evaluation. Water Resour. Res. 18, 14–20. https://doi.org/10.1029/WR018i001p00014
+### Also used https://agupubs.onlinelibrary.wiley.com/doi/epdf/10.1029/2002WR001778
+shortage <- demand - delivery
 
+sat <- shortage <= 0
+unsat <- shortage > 0
 
-head(stor_percent)
+sat_lag <- c(sat[seq(2, length(sat))], NA)
+w_trans <- unsat == TRUE & sat_lag == TRUE
 
+time_length <- sum(!is.na(shortage))
 
-###########################################################################
-###  Calculate Triggers
-###########################################################################
-weber_triggers$moderate <- weber_triggers[,2] * 0.7
-weber_triggers$severe <- weber_triggers[,2] * 0.5
-weber_triggers$extreme <- weber_triggers[,2] * 0.25
+### Reliability
+### Fraction of time that demand is met
+reliability <- sum(sat, na.rm=TRUE)/time_length
 
-### Calculate trigger percents based on storage
-total_system_stor <- sum(total_storage$Total, na.rm=TRUE)
-weber_triggers$mod_perc <- weber_triggers$moderate/total_system_stor
-weber_triggers$sev_perc <- weber_triggers$severe/total_system_stor
-weber_triggers$ext_perc <- weber_triggers$extreme/total_system_stor
+### Resilience
+### Average probability of recovery in any given failure time step
+resilience <- sum(w_trans, na.rm=TRUE)/ (time_length - sum(sat, na.rm=TRUE))
 
-### Calculate annual trigger percents based on storage
-mod_perc_annual <- mean(weber_triggers$mod_perc)
-sev_perc_annual <- mean(weber_triggers$sev_perc)
-ext_perc_annual <- mean(weber_triggers$ext_perc)
+### Vulnerability
+### Maximum shortage
+vulnerability <- max(shortage, na.rm=TRUE)
 
-
-
-###########################################################################
-###  Calculate Regions
-###########################################################################
-
-#Upper - Ogden
-# "RES1.Smith.And.Morehouse.Storage"  
-# "RES2.Rockport.Storage" 
-#  "RES3.Echo.Storage"
-# "RES4.Lost.Creek.Storage"   
-# "RES5.East.Canyon.Storage"   second row
-
-#Upper - Weber
-# "RES6.Causey.Storage"  first row
-#  "RES7.Pineview.Storage"  
-
-#Lower
-#"RES8.Willard.Bay.Storage"
-#"RES9.Gravel.Pit.Storage"  
-#"RES10.Chalk.Creek.Storage" 
-
-#Page 14 of drought contingency plan for active storage
-upper_ogden <- paste0("res_",seq(1,5)) 
-upper_weber <- paste0("res_",seq(6,7)) 
-lower <- paste0("res_",seq(8,10)) 
-
-###
-stor_all$upper_ogden <- apply(stor_all[,seq(2,6)],1,sum, na.rm=TRUE)
-stor_all$upper_weber <- apply(stor_all[,seq(7,8)],1,sum, na.rm=TRUE)
-stor_all$lower <- apply(stor_all[,seq(9,11)],1,sum, na.rm=TRUE)
-stor_all$system <- stor_all$upper_ogden + stor_all$upper_weber + stor_all$lower
-
-max_stor <- max(stor_all$system, na.rm=TRUE)
-stor_all$system_def <- max_stor - stor_all$system
-
-
-###########################################################################
-###  Create trigger column and calculate volume below trigger
-###########################################################################
-trigger_df <- data.frame(row_index=as.numeric(row.names(stor_all)),  month=stor_all$month)
-
-### Merge with original data
-trigger_df <- merge(trigger_df, weber_triggers, by.x="month", by.y="Month")
-### Sort and rename
-trigger_df <- trigger_df[ with(trigger_df, order(row_index)),]
-names(trigger_df)[3] <- "trigger"
-head(trigger_df)
-
-stor_all$trigger <- trigger_df$trigger
-
-### Moderate 50-70% of mean
-### Severe 25-50% of mean
-### Extreme 0-25% of mean
-
-moderate_trigger <- trigger_df$trigger * 0.7
-severe_trigger <- trigger_df$trigger * 0.5
-extreme_trigger <- trigger_df$trigger * 0.25
-
-
-stor_all$moderate <- moderate_trigger - stor_all$system
-stor_all$severe <- severe_trigger - stor_all$system
-stor_all$extreme <- extreme_trigger - stor_all$system
-
-### Clear all negative deficits (above threshold) 
-stor_all$moderate[stor_all$moderate < 0] <- 0
-stor_all$severe[stor_all$severe < 0] <- 0
-stor_all$extreme[stor_all$extreme < 0] <- 0
-
-### Clear all negative deficits (above threshold) 
-stor_all$moderate[stor_all$moderate > (moderate_trigger -severe_trigger)] <- (moderate_trigger - severe_trigger)[stor_all$moderate > (moderate_trigger -severe_trigger)]
-stor_all$severe[stor_all$severe > (severe_trigger - extreme_trigger)] <- (severe_trigger - extreme_trigger)[stor_all$severe > (severe_trigger - extreme_trigger)] 
-
-
-###########################################################################
-###  Test plots
-###########################################################################
-p <- ggplot(stor_all, aes(x=month))
-p <- p + geom_line(aes(y=system, group=wy, colour=data), size=0.3)
-p <- p + theme_classic_new()
-p
-
-
-p <- ggplot(stor_all, aes(x=date, fill=data))
-p <- p + geom_area(aes(y=system), size=0.3, position="identity")
-p <- p + theme_classic_new()
-p
-
-
-
-###########################################################################
-###  Make data descriptors
-###########################################################################
-### Add column for temperature
-stor_all$temp <- NA
-stor_all$temp[stor_all$data == "hd" | stor_all$data == "hw"] <- "Hot"
-stor_all$temp[stor_all$data == "wd" | stor_all$data == "ww"] <- "Warm"
-stor_all$temp[stor_all$data == "base"] <- "Base"
-stor_all$temp <- factor(stor_all$temp, levels= c("Base", "Warm", "Hot"))
-
-### Add column for precipitation
-stor_all$precip <- NA
-stor_all$precip[stor_all$data == "hd" | stor_all$data == "wd"] <- "Dry"
-stor_all$precip[stor_all$data == "hw" | stor_all$data == "ww"] <- "Wet"
-stor_all$precip[stor_all$data == "base"] <- "Base"
-stor_all$precip <- factor(stor_all$precip, levels= c("Base", "Wet", "Dry"))
-
-
-###########################################################################
-## Plot Storage Time Series
-###########################################################################
-area_df <- stor_all[stor_all$data %in% c("paleo", "observed", "hd"),]
-
-p <- ggplot(area_df, aes(x=date, y=system/1000, fill=data))
-p <- p + geom_area( position = "identity", alpha=0.8)
-p <- p + geom_hline(yintercept=0, size=0.2)
-#p <- p + geom_line(data=base_df, colour="grey30")
-#p <- p + geom_area( data=base_df, position = "identity", alpha=0.5)
-p <- p + theme_classic_new()
-#p <- p + scale_fill_manual(name="Scenario", values= c("grey30", "grey30", cc_colors), labels=c("Observed", "Base", "HD", "HW", "WD", "WW", "Reconst" ))
-p <- p + scale_fill_manual(name="Scenario", values= c("grey30", "#CC79A7", "#D55E00"), labels=c( "Observed", "Reconstr", "Climate Change (HD)"), limits=c("observed", "paleo", "hd"), guide = guide_legend())
-p <- p + coord_cartesian(xlim=c(as.Date("1425-01-01"), as.Date("2070-01-01")), expand=FALSE)
-p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="50 years"), date_labels = "%Y")
-p <- p + scale_y_continuous(name="System Storage (1,000 ac-ft)", breaks=seq(0,800,100))
-p <- p + theme(legend.position="bottom")
-p
-
-### Save figures
-ggsave(file.path(write_output_base_path,"paleo_future_stor_area_acft_hd_full.png"),  p, width=8, height=3.5, dpi=300)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_area_acft_hd_full.pdf"),  p, width=8, height=3.5)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_area_acft_hd_full.svg"),  p, width=8, height=3.5)
-
-### Cut to 1900s
-p <- p + coord_cartesian(xlim=c(as.Date("1920-01-01"), as.Date("2066-01-01")))
-p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="10 years"), date_labels = "%Y")
-
-### Save figures
-ggsave(file.path(write_output_base_path,"paleo_future_stor_area_acft_hd_1900.png"),  p, width=8, height=3.5, dpi=300)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_area_acft_hd_1900.pdf"),  p, width=8, height=3.5)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_area_acft_hd_1900.svg"),  p, width=8, height=3.5)
-
-
-###########################################################################
-## Plot Storage percent Time Series
-###########################################################################
-### Create percentile plot dataframe
-perc_plot <- stor_percent[stor_all$data %in% c("paleo", "observed", "hd"),]
-
-### Create dataframe for triggers
-trigger_plot <- data.frame(date = rep(c(min(perc_plot$date), max(perc_plot$date)), 3))
-trigger_plot$month <- month(trigger_plot$date)
-trigger_plot$year <- year(trigger_plot$date)
-
-### Add water year column
-trigger_plot$wy <- usgs_wateryear(year=trigger_plot$year, month=trigger_plot$month)
-
-### Add triggers
-trigger_plot$trigger_level <- rep(c("Moderate", "Severe", "Extreme"), each=2)
-trigger_plot$trigger_level <- factor(trigger_plot$trigger_level, levels=c("Moderate", "Severe", "Extreme"))
-trigger_plot$res_perc <- rep(c(mod_perc_annual-sev_perc_annual, sev_perc_annual-ext_perc_annual, ext_perc_annual), each=2)
-
-
-### To plot
-p <- ggplot(perc_plot, aes(x=date, y=res_1))
-p <- p + geom_area(data=trigger_plot, aes(y=res_perc, fill=trigger_level))
-p <- p + geom_line(aes(y=res_1, group=data))
-#p <- p + geom_line(data=trigger_plot, aes(y=mod_perc_annual), col="red")
-#p <- p + geom_line(data=trigger_plot, aes(y=ext_perc_annual), col="green")
-#p <- p + geom_line(data=trigger_plot, aes(y=sev_perc_annual), col="blue")
-p <- p + theme_classic_new()
-p <- p + scale_fill_manual(name="Storage Trigger", values= c("#f03b20",  "#feb24c", "#ffeda0"), limits= c("Extreme", "Severe", "Moderate"), labels=c("Extreme", "Severe", "Moderate"), guide = guide_legend())
-p <- p + coord_cartesian(xlim=c(as.Date("1428-01-01"), as.Date("2070-01-01")), ylim=c(0,1), expand=FALSE)
-p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="50 years"), date_labels = "%Y")
-p <- p + scale_y_continuous(name="Percent Storage", breaks=seq(0,1,0.1), labels=percent)
-p <- p + theme(legend.position="bottom")
-p
-
-
-### Save figures
-ggsave(file.path(write_output_base_path,"paleo_future_stor_area_acft_hd_full.png"),  p, width=8, height=3.5, dpi=300)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_area_acft_hd_full.pdf"),  p, width=8, height=3.5)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_area_acft_hd_full.svg"),  p, width=8, height=3.5)
-
-### Cut to 1900s
-p <- p + coord_cartesian(xlim=c(as.Date("1920-01-01"), as.Date("2066-01-01")))
-p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="10 years"), date_labels = "%Y")
-
-### Save figures
-ggsave(file.path(write_output_base_path,"paleo_future_stor_area_acft_hd_1900.png"),  p, width=8, height=3.5, dpi=300)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_area_acft_hd_1900.pdf"),  p, width=8, height=3.5)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_area_acft_hd_1900.svg"),  p, width=8, height=3.5)
-
-
-names(perc_plot)[2:9] <- as.character(total_storage$Name)
-yup <-  melt(perc_plot, id.vars = c("date", "month", "year", "wy", "data"))
-res_test <- yup$variable %in% total_storage$Name
-yup <- yup[res_test,]
- 
-### To plot
-p <- ggplot(yup, aes(x=date, y=value))
-p <- p + geom_area(data=trigger_plot, aes(y=res_perc, fill=trigger_level), alpha=0.85)
-p <- p + geom_line(aes(group=data), size=0.12)
-#p <- p + geom_line(data=trigger_plot, aes(y=mod_perc_annual), col="red")
-#p <- p + geom_line(data=trigger_plot, aes(y=ext_perc_annual), col="green")
-#p <- p + geom_line(data=trigger_plot, aes(y=sev_perc_annual), col="blue")
-p <- p + theme_classic_new()
-p <- p + scale_fill_manual(name="Storage Trigger", values= c("#f03b20",  "#feb24c", "#ffeda0"), limits= c("Extreme", "Severe", "Moderate"), labels=c("Extreme", "Severe", "Moderate"), guide = guide_legend())
-p <- p + coord_cartesian(xlim=c(as.Date("1428-01-01"), as.Date("2070-01-01")), ylim=c(0,1), expand=FALSE)
-p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="50 years"), date_labels = "%Y")
-p <- p + scale_y_continuous(name="Percent of Total Storage", breaks=seq(0,1,0.1), labels=percent)
-p <- p + theme(legend.position="bottom")
-p <- p + facet_wrap(~variable, nrow = 4)
-p
-
-
-### Save figures
-ggsave(file.path(write_output_base_path,"paleo_future_stor_perc.png"),  p, width=11, height=9, dpi=300)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_perc.pdf"),  p, width=11, height=9)
-
-
-
-
-###########################################################################
-## Plot Shortage Time Series by region
-###########################################################################
-area_region <- area_df[, names(area_df) %in% c("date", "data", "upper_ogden", "upper_weber", "lower")]
-area_region <- melt(area_region, id.vars=c("date", "data"))#, measure.vars=c("upper_ogden", "upper_weber", "lower"))
-area_region$data <- factor(area_region$data)
-area_region$variable <- factor(area_region$variable)
-
-p <- ggplot(subset(area_region, data=="observed"), aes(x=date, y=value/1000, fill=variable))
-#p <- ggplot(yup, aes(x=date, y=value/1000, fill=variable))
-p <- p + geom_area()
-p <- p + geom_area(data=subset(area_region, data=="paleo"))
-p <- p + geom_area(data=subset(area_region, data=="hd"))
-p <- p + theme_classic_new()
-#p <- p + scale_fill_manual(name="Scenario", values= c("grey30", "grey30", cc_colors), labels=c("Observed", "Base", "HD", "HW", "WD", "WW", "Reconst" ))
-p <- p + scale_fill_manual(name="Region", values= res_colors, labels=c("Upper Ogden", "Upper Weber", "Lower Weber"), guide = guide_legend())
-p <- p + coord_cartesian(xlim=c(as.Date("1425-01-01"), as.Date("2070-01-01")), expand=FALSE)
-p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="50 years"), date_labels = "%Y")
-p <- p + scale_y_continuous(name="System Storage (1,000 ac-ft)", breaks=seq(0,800,100))
-p <- p + theme(legend.position="bottom")
-p
-
-
-### Save figures
-ggsave(file.path(write_output_base_path,"paleo_future_stor_byregion_acft_hd_full.png"),  p, width=8, height=3.5, dpi=300)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_byregion_acft_hd_full.pdf"),  p, width=8, height=3.5)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_byregion_acft_hd_full.svg"),  p, width=8, height=3.5)
-
-
-### Cut to 1900s
-p <- p + coord_cartesian(xlim=c(as.Date("1920-01-01"), as.Date("2066-01-01")))
-p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="10 years"), date_labels = "%Y")
-
-### Save figures
-ggsave(file.path(write_output_base_path,"paleo_future_stor_byregion_acft_hd_1900.png"),  p, width=8, height=3.5, dpi=300)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_byregion_acft_hd_1900.pdf"),  p, width=8, height=3.5)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_byregion_acft_hd_1900.svg"),  p, width=8, height=3.5)
-
-
-
-
-###########################################################################
-## Plot Shortage Time Series
-###########################################################################
-plot_test <- stor_all$data %in% c("observed", "paleo")
-
-cc_test <- stor_all$data %in% c("base", "hd", "hw", "wd", "ww")
-cc_df <- stor_all[cc_test,]
-
-#plot_df <- rbind(stor_all[plot_test,], cc_df[cc_df$data %in% c("base", "HDN5"),])
-
-base_df <- cc_df[cc_df$data %in% c("base"),]
-base_df$data <- factor("observed", levels="observed")
-
-area_df <- rbind(cc_df[cc_df$data %in% c("hd", "hw"),], stor_all[stor_all$data %in% c("paleo", "observed"),])
-
-p <- ggplot(area_df, aes(x=date, y=-system_def/1000, fill=data))
-p <- p + geom_area( position = "identity", alpha=0.8)
-p <- p + geom_hline(yintercept=0, size=0.2)
-p <- p + geom_hline(yintercept=-max_stor/1000, size=0.4, colour="black", linetype="longdash")
-p <- p + geom_line(data=base_df, colour="grey30")
-#p <- p + geom_area( data=base_df, position = "identity", alpha=0.5)
-p <- p + theme_classic_new()
-#p <- p + scale_fill_manual(name="Scenario", values= c("grey30", "grey30", cc_colors), labels=c("Observed", "Base", "HD", "HW", "WD", "WW", "Reconst" ))
-p <- p + scale_fill_manual(name="Scenario", values= c("#D55E00", "#56B4E9", "grey30", "#CC79A7"), labels=c("HD", "HW", "Observed", "Reconstr"), guide = guide_legend())
-#p <- p + coord_cartesian(xlim=c(as.Date("1920-01-01"), as.Date("2018-01-01")))
-p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="50 years"), date_labels = "%Y")
-p <- p + scale_y_continuous(name="System Storage Deficit (1,000 ac-ft)", breaks=seq(-10000,500,50))
-p <- p + theme(legend.position="bottom")
-p
-
-### Save figures
-ggsave(file.path(write_output_base_path,"paleo_future_stor_deficit_area_acft_hot_full.png"),  p, width=8, height=3.5, dpi=300)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_deficit_area_acft_hot_full.pdf"),  p, width=8, height=3.5)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_deficit_area_acft_hot_full.svg"),  p, width=8, height=3.5)
-
-### Cut to 1900s
-p <- p + coord_cartesian(xlim=c(as.Date("1920-01-01"), as.Date("2066-01-01")))
-p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="10 years"), date_labels = "%Y")
-
-### Save figures
-ggsave(file.path(write_output_base_path,"paleo_future_stor_deficit_area_acft_hot_1900.png"),  p, width=8, height=3.5, dpi=300)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_deficit_area_acft_hot_1900.pdf"),  p, width=8, height=3.5)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_deficit_area_acft_hot_1900.svg"),  p, width=8, height=3.5)
-
-
-
-base_df <- cc_df[cc_df$data %in% c("base"),]
-base_df$data <- factor("observed", levels="observed")
-
-area_df <- rbind(cc_df[cc_df$data %in% c("wd", "ww"),], stor_all[stor_all$data %in% c("paleo", "observed"),])
-
-p <- ggplot(area_df, aes(x=date, y=-system_def/1000, fill=data))
-p <- p + geom_area( position = "identity", alpha=0.8)
-p <- p + geom_hline(yintercept=0, size=0.2)
-p <- p + geom_hline(yintercept=-max_stor/1000, size=0.4, colour="black", linetype="longdash")
-p <- p + geom_line(data=base_df, colour="grey30")
-#p <- p + geom_area( data=base_df, position = "identity", alpha=0.5)
-p <- p + theme_classic_new()
-p <- p + scale_fill_manual(name="Scenario", values= c("grey30", "#CC79A7", "#E69F00", "#0072B2"), labels=c("Observed", "Reconstr", "WD", "WW"), guide = guide_legend())
-#p <- p + coord_cartesian(xlim=c(as.Date("1920-01-01"), as.Date("2018-01-01")))
-p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="50 years"), date_labels = "%Y")
-p <- p + scale_y_continuous(name="System Storage Deficit (1,000 ac-ft)", breaks=seq(-10000,500,50))
-p <- p + theme(legend.position="bottom")
-p
-
-### Save figures
-ggsave(file.path(write_output_base_path,"paleo_future_stor_deficit_area_acft_warm_full.png"),  p, width=8, height=3.5, dpi=300)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_deficit_area_acft_warm_full.pdf"),  p, width=8, height=3.5)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_deficit_area_acft_warm_full.svg"),  p, width=8, height=3.5)
-
-### Cut to 1900s
-p <- p + coord_cartesian(xlim=c(as.Date("1920-01-01"), as.Date("2066-01-01")))
-p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="10 years"), date_labels = "%Y")
-
-### Save figures
-ggsave(file.path(write_output_base_path,"paleo_future_stor_deficit_area_acft_warm_1900.png"),  p, width=8, height=3.5, dpi=300)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_deficit_area_acft_warm_1900.pdf"),  p, width=8, height=3.5)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_deficit_area_acft_warm_1900.svg"),  p, width=8, height=3.5)
-
-
-
-###########################################################################
-## Plot Area Time Series for climate change
-###########################################################################
-
-plot_test <- stor_all$data %in% c( "hd", "hw", "wd", "ww")
-
-area_df <- stor_all[plot_test,]
-area_df$data <- factor(area_df$data, levels=c( "ww", "hw", "wd", "hd"), labels=c("Warm-Wet", "Hot-Wet", "Warm-Dry", "Hot-Dry"))
-
-line_df <- stor_all[stor_all$data %in% "base", ]
-line_df <- do.call("rbind", replicate(4, line_df, simplify = FALSE))
-line_df$data <- area_df$data
-line_df$precip <- area_df$precip
-line_df$temp <- area_df$temp
-
-p <- ggplot(area_df, aes(x=date, y=system/1000))
-p <- p + geom_area(aes(fill=data))
-p <- p + geom_hline(yintercept=0)
-p <- p + geom_line(data=line_df, colour="black")#, linetype="longdash")
-p <- p + theme_classic_new()
-p <- p + scale_fill_manual(name="Scenario", values= cc_colors[c(4,2,3,1)], labels=c("WW", "HW", "WD", "HD"), breaks=c("ww", "hw", "wd", "hd"))
-#p <- p + coord_cartesian(xlim=c(as.Date("1920-01-01"), as.Date("2018-01-01")))
-p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="5 years"), date_labels = "%Y")
-p <- p + scale_y_continuous(name="System Storage (1,000 ac-ft)", breaks=seq(-5000,5000,100))
-p <- p + facet_grid(data ~ .)
-p
-
-### Save figures
-ggsave(file.path(write_output_base_path,"clim_change_storage_area_acft_vert.png"),  p, width=7, height=6, dpi=300)
-ggsave(file.path(write_output_base_path,"clim_change_storage_area_acft_vert.pdf"),  p, width=7, height=6)
-ggsave(file.path(write_output_base_path,"clim_change_storage_area_acft_vert.svg"),  p, width=7, height=6)
-
-
-p <- p + facet_grid(precip ~ temp)
-
-### Save figures
-ggsave(file.path(write_output_base_path,"clim_change_storage_area_acft_square.png"),  p, width=8, height=6, dpi=300)
-ggsave(file.path(write_output_base_path,"clim_change_storage_area_acft_square.pdf"),  p, width=8, height=6)
-ggsave(file.path(write_output_base_path,"clim_change_storage_area_acft_square.svg"),  p, width=8, height=6)
-
-
-
-
-###########################################################################
-## Plot Area Time Series for climate change By Region
-###########################################################################
-
-area_region <- area_df[, names(area_df) %in% c("date", "data", "upper_ogden", "upper_weber", "lower")]
-area_region <- melt(area_region, id.vars=c("date", "data"))#, measure.vars=c("upper_ogden", "upper_weber", "lower"))
-area_region$data <- factor(area_region$data)
-area_region$variable <- factor(area_region$variable)
-line_df$value <- line_df$system
-
-p <- ggplot(area_region, aes(x=date, y=value/1000))
-p <- p + geom_area(aes(fill=variable))
-#p <- p + geom_hline(yintercept=0)
-p <- p + geom_line(data=line_df, colour="black")#, linetype="longdash")
-p <- p + theme_classic_new()
-p <- p + scale_fill_manual(name="Region", values= res_colors, labels=c("Upper Ogden", "Upper Weber", "Lower Weber"), guide = guide_legend())
-p <- p + theme(legend.position="bottom")
-#p <- p + coord_cartesian(xlim=c(as.Date("1920-01-01"), as.Date("2018-01-01")))
-p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="5 years"), date_labels = "%Y")
-p <- p + scale_y_continuous(name="System Storage (1,000 ac-ft)", breaks=seq(-5000,5000,100))
-p <- p + facet_grid(data ~ .)
-p
-
-### Save figures
-ggsave(file.path(write_output_base_path,"clim_change_storage_byregion_acft_vert.png"),  p, width=7, height=7, dpi=300)
-ggsave(file.path(write_output_base_path,"clim_change_storage_byregion_acft_vert.pdf"),  p, width=7, height=7)
-ggsave(file.path(write_output_base_path,"clim_change_storage_byregion_acft_vert.svg"),  p, width=7, height=7)
-
-
-p <- p + facet_grid(precip ~ temp)
-
-### Save figures
-ggsave(file.path(write_output_base_path,"clim_change_storage_byregion_acft_square.png"),  p, width=8, height=7, dpi=300)
-ggsave(file.path(write_output_base_path,"clim_change_storage_byregion_acft_square.pdf"),  p, width=8, height=7)
-ggsave(file.path(write_output_base_path,"clim_change_storage_byregion_acft_square.svg"),  p, width=8, height=7)
-
-
-###########################################################################
-###  Calculate drought events
-###########################################################################
-
-drought_event_summary <- subset(drought_event_summary, data!="CTN5")
-
-drought_event_summary$data <- as.character(drought_event_summary$data)
-drought_event_summary$data[drought_event_summary$data == "WDN5"] <- "wd"
-drought_event_summary$data[drought_event_summary$data == "WWN5"] <- "ww"
-drought_event_summary$data[drought_event_summary$data == "HDN5"] <- "hd"
-drought_event_summary$data[drought_event_summary$data == "HWN5"] <- "hw"
-#drought_event_summary$data[drought_event_summary$data == "WDN5"] <= "wd"
-
-#### Shift climate change forward in time (55 years)
-drought_event_summary$begin <- as.Date(drought_event_summary$begin)
-drought_event_summary$end <- as.Date(drought_event_summary$end)
-
-cc_test <- drought_event_summary$data %in% c("wd", "ww", "hd", "hw")
-drought_event_summary$begin[cc_test] <- drought_event_summary$begin[cc_test] %m+% years(55)
-drought_event_summary$end[cc_test] <- drought_event_summary$end[cc_test] %m+% years(55)
-
-drought_event_summary$upper_ogden_min <- NA
-drought_event_summary$upper_weber_min <- NA
-drought_event_summary$lower_min <- NA
-drought_event_summary$system_min <- NA
-
-for (i in seq(1, dim(drought_event_summary)[1])){
-
-	event_i <- drought_event_summary[i,]
-	begin_i <- as.Date(event_i$begin)
-	end_i <- as.Date(event_i$end)
-	
-	data_i <- as.character(event_i$data)
-	
-	stor_i <- subset(stor_all, date >= begin_i-60 & date <=end_i+60 & data==data_i)
-	
-	if (length(stor_i$system)>0){
-	drought_event_summary$upper_ogden_min[i] <- min(stor_i$upper_ogden, na.rm=TRUE)
-	drought_event_summary$upper_weber_min[i] <- min(stor_i$upper_weber, na.rm=TRUE)
-	drought_event_summary$lower_min[i] <- min(stor_i$lower, na.rm=TRUE)
-	drought_event_summary$system_min[i] <- min(stor_i$system, na.rm=TRUE)
-	}
-}
-
-plot_df <- drought_event_summary[!is.na(drought_event_summary$system_min), ]
-plot_df_subset <- plot_df[plot_df$data %in% c("paleo", "observed", "hd"),]
-
-require(viridis)
-
-p <- ggplot(plot_df, aes(x=dura_months/12, y=min_perc*100, colour=system_min/1000))
-p <- p + geom_point(size=4)#, aes(shape=data))
-p <- p + scale_colour_viridis(direction=-1, option="plasma", name="Minimum\nStorage\n(1,000 ac-ft)")
-p <- p + theme_classic_new(12)
-p <- p + scale_x_continuous(name="Drought Duration (Years)", breaks=seq(0,30,1))
-p <- p + scale_y_continuous(name="Min Monthly Flow Percentile")
-p <- p + theme(legend.position = c(0.85, 0.75))
-p <- p + coord_cartesian(xlim = c(0.35,6.5), ylim = c(0,47), expand = TRUE)
-p
-
-### Save figures
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_system_storage.png"),  p, width=6.5, height=5, dpi=300)
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_system_storage.pdf"),  p, width=6.5, height=5)
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_system_storage.svg"),  p, width=6.5, height=5)
-
-p <- p + scale_colour_distiller(name="Minimum\nStorage\n(1,000 ac-ft)", type = "seq", palette = "Oranges", direction = -1)
-
-
-#p + scale_colour_distiller(name="Minimum\nStorage\n(1,000 ac-ft)", type = "seq", palette = "OrRd", direction = -1)
-#p + scale_colour_distiller(name="Minimum\nStorage\n(1,000 ac-ft)", type = "seq", palette = "OrRd", direction = -1)
-#p + scale_colour_distiller(name="Minimum\nStorage\n(1,000 ac-ft)", type = "seq", palette = "YlOrBr", direction = -1)
-#p + scale_colour_distiller(name="Minimum\nStorage\n(1,000 ac-ft)", type = "seq", palette = "YlOrRd", direction = -1)
-#p + scale_colour_distiller(name="Minimum\nStorage\n(1,000 ac-ft)", type = "seq", palette = "Oranges", direction = -1)
-#p + scale_colour_distiller(name="Minimum\nStorage\n(1,000 ac-ft)", type = "seq", palette = "Reds", direction = -1)
-
-### Save figures
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_system_storage_orange.png"),  p, width=6.5, height=5, dpi=300)
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_system_storage_orange.pdf"),  p, width=6.5, height=5)
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_system_storage_orange.svg"),  p, width=6.5, height=5)
-
-
-
-
-p <- ggplot(plot_df, aes(x=dura_months/12, y=min_perc*100, colour=upper_ogden_min/1000))
-p <- p + geom_point(size=4)#, aes(shape=data))
-p <- p + scale_colour_viridis(direction=-1, option="plasma", name="Minimum\nStorage\n(1,000 ac-ft)")
-p <- p + theme_classic_new(12)
-p <- p + scale_x_continuous(name="Drought Duration (Years)", breaks=seq(0,30,1))
-p <- p + scale_y_continuous(name="Min Monthly Flow Percentile")
-p <- p + theme(legend.position = c(0.85, 0.75))
-p <- p + coord_cartesian(xlim = c(0.35,6.5), ylim = c(0,47), expand = TRUE)
-p
-
-### Save figures
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_upper_ogden_storage.png"),  p, width=6.5, height=5, dpi=300)
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_upper_ogden_storage.pdf"),  p, width=6.5, height=5)
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_upper_ogden_storage.svg"),  p, width=6.5, height=5)
-
-p <- p + scale_colour_distiller(name="Minimum\nStorage\n(1,000 ac-ft)", type = "seq", palette = "Oranges", direction = -1)
-
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_upper_ogden_storage_orange.png"),  p, width=6.5, height=5, dpi=300)
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_upper_ogden_storage_orange.pdf"),  p, width=6.5, height=5)
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_upper_ogden_storage_orange.svg"),  p, width=6.5, height=5)
-
-
-
-p <- ggplot(plot_df, aes(x=dura_months/12, y=min_perc*100, colour=upper_weber_min/1000))
-p <- p + geom_point(size=4)#, aes(shape=data))
-p <- p + scale_colour_viridis(direction=-1, option="plasma", name="Minimum\nStorage\n(1,000 ac-ft)")
-p <- p + theme_classic_new(12)
-p <- p + scale_x_continuous(name="Drought Duration (Years)", breaks=seq(0,30,1))
-p <- p + scale_y_continuous(name="Min Monthly Flow Percentile")
-p <- p + theme(legend.position = c(0.85, 0.75))
-p <- p + coord_cartesian(xlim = c(0.35,6.5), ylim = c(0,47), expand = TRUE)
-p
-
-### Save figures
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_upper_weber_storage.png"),  p, width=6.5, height=5, dpi=300)
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_upper_weber_storage.pdf"),  p, width=6.5, height=5)
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_upper_weber_storage.svg"),  p, width=6.5, height=5)
-
-p <- p + scale_colour_distiller(name="Minimum\nStorage\n(1,000 ac-ft)", type = "seq", palette = "Oranges", direction = -1)
-
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_upper_weber_storage_orange.png"),  p, width=6.5, height=5, dpi=300)
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_upper_weber_storage_orange.pdf"),  p, width=6.5, height=5)
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_upper_weber_storage_orange.svg"),  p, width=6.5, height=5)
-
-
-
-
-p <- ggplot(plot_df, aes(x=dura_months/12, y=min_perc*100, colour=lower_min/1000))
-p <- p + geom_point(size=4)#, aes(shape=data))
-p <- p + scale_colour_viridis(direction=-1, option="plasma", name="Minimum\nStorage\n(1,000 ac-ft)")
-p <- p + theme_classic_new(12)
-p <- p + scale_x_continuous(name="Drought Duration (Years)", breaks=seq(0,30,1))
-p <- p + scale_y_continuous(name="Min Monthly Flow Percentile")
-p <- p + theme(legend.position = c(0.85, 0.75))
-p <- p + coord_cartesian(xlim = c(0.35,6.5), ylim = c(0,47), expand = TRUE)
-p
-
-### Save figures
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_lower_storage.png"),  p, width=6.5, height=5, dpi=300)
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_lower_storage.pdf"),  p, width=6.5, height=5)
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_lower_storage.svg"),  p, width=6.5, height=5)
-
-p <- p + scale_colour_distiller(name="Minimum\nStorage\n(1,000 ac-ft)", type = "seq", palette = "Oranges", direction = -1)
-
-### Save figures
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_lower_storage_orange.png"),  p, width=6.5, height=5, dpi=300)
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_lower_storage_orange.pdf"),  p, width=6.5, height=5)
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_lower_storage_orange.svg"),  p, width=6.5, height=5)
-
-
-
-
-inferno
-viridis ### no 
-plasma
-magma### no
-
-###########################################################################
-###  Plot against triggers
-###########################################################################
-
-
-plot_triggers <- merge(plot_df, weber_triggers, by.x="month", by.y="Month")
-
-plot_df$trigger <- "None"
-plot_df$trigger[plot_df$system_min < weber_triggers[8,2] * 0.25] <- "Extreme"
-plot_df$trigger[plot_df$system_min < weber_triggers[8,2] * 0.5 & plot_df$trigger == "None"] <- "Severe"
-plot_df$trigger[plot_df$system_min < weber_triggers[8,2] * 0.7 & plot_df$trigger == "None"] <- "Moderate"
-
-
-
-
-p <- ggplot(plot_df, aes(x=dura_months/12, y=min_perc*100, colour=trigger))
-p <- p + geom_point(data=subset(plot_df, trigger=="None"), size=4, alpha=0.7)#, aes(shape=data))
-p <- p + geom_point(data=subset(plot_df, trigger!="None"), size=4)#, 
-#p <- p + scale_colour_viridis(direction=-1, option="plasma", name="Minimum\nStorage\n(1,000 ac-ft)")
-p <- p + theme_classic_new(12)
-p <- p + scale_x_continuous(name="Drought Duration (Years)", breaks=seq(0,30,1))
-p <- p + scale_y_continuous(name="Min Monthly Flow Percentile")
-p <- p + scale_colour_manual(name="Storage Trigger", values= c("grey80", "#4daf4a", "#e5c494", "#e41a1c"), limits= c("None", "Moderate", "Severe", "Extreme"), guide = guide_legend())
-p <- p + theme(legend.position = c(0.85, 0.75))
-p <- p + coord_cartesian(xlim = c(0.35,6.5), ylim = c(0,47), expand = TRUE)
-p
-
-
-
-### Save figures
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_trigger.png"),  p, width=6.5, height=5, dpi=300)
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_trigger.pdf"),  p, width=6.5, height=5)
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_trigger.svg"),  p, width=6.5, height=5)
-
-
-
-
-###########################################################################
-## Plot Shortage Time Series
-###########################################################################
-trigger_subset <- subset(stor_all, select=c("date", "data", "moderate", "severe", "extreme"))
-
-trigger_subset <- melt(trigger_subset, id.vars=c("date", "data"), measure.vars=c("moderate", "severe", "extreme"))
-trigger_subset$variable <- factor(trigger_subset$variable, levels=c("moderate", "severe", "extreme"))
-trigger_subset$data_variable <- paste0(trigger_subset$data,"_",trigger_subset$variable)
-
-plot_test <- trigger_subset$data %in% c("observed", "paleo", "hd")
-area_df <- trigger_subset[plot_test,]
-area_df$variable <- factor(area_df$variable, levels=c("extreme", "severe", "moderate"))
-
-#cc_test <- trigger_subset$data %in% c("base", "hd", "hw", "wd", "ww")
-#cc_df <- trigger_subset[cc_test,]
-
-#base_df <- cc_df[cc_df$data %in% c("base"),]
-#base_df$data <- factor("observed", levels="observed")
-
-#area_df <- rbind(cc_df[cc_df$data %in% c("hd", "hw"),], stor_all[stor_all$data %in% c("paleo", "observed"),])
-
-p <- ggplot(area_df, aes(x=date, y=-value/1000, fill=variable))#, group=data_variable))
-p <- p + geom_rect(aes(xmin=as.Date("00-12-01"),xmax=as.Date("1903-12-01"),ymin=-Inf,ymax=Inf),alpha=0.1,fill="grey90")
-p <- p + geom_rect(aes(xmin=as.Date("2035-01-01"),xmax=as.Date("2065-12-01"),ymin=-Inf,ymax=Inf),alpha=0.1,fill="grey90")
-p <- p + geom_area( data=subset(area_df, data=="observed"), position = "stack")
-p <- p + geom_area( data=subset(area_df, data=="paleo"), position = "stack")
-p <- p + geom_area( data=subset(area_df, data=="hd"), position = "stack")
-p <- p + geom_hline(yintercept=0, size=0.2)
-#p <- p + geom_hline(yintercept=-max_stor/1000, size=0.4, colour="black", linetype="longdash")
-#p <- p + geom_line(data=base_df, colour="grey30")
-#p <- p + geom_area( data=base_df, position = "identity", alpha=0.5)
-p <- p + theme_classic_new()
-p <- p + scale_fill_manual(name="Storage Trigger", values= c("#4daf4a", "#e5c494", "#e41a1c"), limits= c("moderate", "severe", "extreme"), labels=c("Moderate", "Severe", "Extreme"), guide = guide_legend())
-p <- p + coord_cartesian(xlim=c(as.Date("1400-01-01"), as.Date("2070-01-01")), expand=FALSE)
-p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="50 years"), date_labels = "%Y")
-p <- p + scale_y_continuous(name="Storage Trigger Deficit (1,000 ac-ft)", breaks=seq(-10000,500,50))
-p <- p + theme(legend.position="bottom")
-#p <- p + coord_cartesian(xlim=c(as.Date("1400-01-01", as.Date("2070-12-01"))
-p
-
-
-### Save figures
-ggsave(file.path(write_output_base_path,"trigger_storage.png"),  p, width=8, height=4, dpi=300)
-ggsave(file.path(write_output_base_path,"trigger_storage.pdf"),  p, width=8, height=4)
-ggsave(file.path(write_output_base_path,"trigger_storage.svg"),  p, width=8, height=4)
-
-
-p <- ggplot(area_df, aes(x=date, y=-value/1000, fill=variable))#, group=data_variable))
-#p <- p + geom_rect(aes(xmin=as.Date("00-12-01"),xmax=as.Date("1903-12-01"),ymin=-Inf,ymax=Inf),alpha=0.1,fill="grey90")
-#p <- p + geom_rect(aes(xmin=as.Date("2035-01-01"),xmax=as.Date("2065-12-01"),ymin=-Inf,ymax=Inf),alpha=0.1,fill="grey90")
-p <- p + geom_vline(xintercept=as.Date("1904-01-01"), linetype="dotted")
-#p <- p + geom_vline(xintercept=as.Date("2002-09-01"), linetype="dotted")
-p <- p + geom_vline(xintercept=as.Date("2035-01-01"), linetype="dotted")
-
-p <- p + geom_area( data=subset(area_df, data=="observed"), position = "stack")
-p <- p + geom_area( data=subset(area_df, data=="paleo"), position = "stack")
-p <- p + geom_area( data=subset(area_df, data=="hd"), position = "stack")
-p <- p + geom_hline(yintercept=0, size=0.2)
-#p <- p + geom_hline(yintercept=-max_stor/1000, size=0.4, colour="black", linetype="longdash")
-#p <- p + geom_line(data=base_df, colour="grey30")
-#p <- p + geom_area( data=base_df, position = "identity", alpha=0.5)
-p <- p + theme_classic_new()
-p <- p + scale_fill_manual(name="Storage Trigger", values= c("#f03b20",  "#feb24c", "#ffeda0"), limits= c("extreme", "severe", "moderate"), labels=c("Extreme", "Severe", "Moderate"), guide = guide_legend())
-p <- p + coord_cartesian(xlim=c(as.Date("1400-01-01"), as.Date("2070-01-01")), expand=FALSE)
-p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="50 years"), date_labels = "%Y")
-p <- p + scale_y_continuous(name="Storage Trigger Deficit (1,000 ac-ft)", breaks=seq(-10000,500,50))
-p <- p + theme(legend.position="bottom")
-#p <- p + coord_cartesian(xlim=c(as.Date("1400-01-01", as.Date("2070-12-01"))
-p
-
-
-### Save figures
-ggsave(file.path(write_output_base_path,"trigger_storage_red.png"),  p, width=8, height=4, dpi=300)
-ggsave(file.path(write_output_base_path,"trigger_storage_red.pdf"),  p, width=8, height=4)
-ggsave(file.path(write_output_base_path,"trigger_storage_red.svg"),  p, width=8, height=4)
-
-
-
-###########################################################################
-## Plot 
-###########################################################################
-stor_bar <- stor_all
-stor_bar$trigger <- "None"
-stor_bar$trigger[stor_bar$extreme > 0] <- "Extreme"
-stor_bar$trigger[stor_bar$severe > 0 & stor_bar$trigger == "None"] <- "Severe"
-stor_bar$trigger[stor_bar$moderate > 0 & stor_bar$trigger == "None"] <- "Moderate"
-
-stor_bar$data <- factor(stor_bar$data, levels=c( "paleo", "observed", "base" ,"ww", "hw", "wd", "hd"), labels=c("Paleo", "Observed", "Base", "Warm-Wet", "Hot-Wet", "Warm-Dry", "Hot-Dry"))
- 
-stor_bar$trigger <- factor(stor_bar$trigger, levels=c( "None","Extreme", "Severe", "Moderate"))
-
- 
-p <- ggplot(stor_bar, aes(x=data, fill=trigger))
-p <- p + geom_bar(position = "fill")
-#p <- p + geom_text(size = 3, position = position_stack(vjust = 0.5))
-p <- p + coord_cartesian(ylim=c(0,0.4), expand=FALSE)
-p <- p + theme_classic_new()
-p <- p + scale_fill_manual(name="Storage Trigger", values= c( "#e41a1c", "#e5c494", "#4daf4a"), limits= c("Extreme", "Severe", "Moderate"), guide = guide_legend())
-p
-
-
-
-
-p <- ggplot(stor_bar, aes(x=data, fill=trigger))
-p <- p + geom_bar(position = "fill")
-#p <- p + geom_text(size = 3, position = position_stack(vjust = 0.5))
-p <- p + coord_cartesian(ylim=c(0,0.4), expand=FALSE)
-p <- p + theme_classic_new()
-p <- p + scale_y_continuous(name="Proportion of Months", breaks=seq(0,1,0.05), labels = scales::percent)
-p <- p + scale_x_discrete(name="Data")
-p <- p + scale_fill_manual(name="Storage Trigger", values= c("#f03b20",  "#feb24c", "#ffeda0"), limits= c("Extreme", "Severe", "Moderate"))
-p <- p + theme(legend.position = c(0.2, 0.8))
-p <- p + theme(panel.grid.major.y = element_line(size = 0.2, linetype = 'solid', colour = "grey85"))
-p
-                             
-
-### Save figures
-ggsave(file.path(write_output_base_path,"trigger_proportion.png"),  p, width=5, height=3.5, dpi=300)
-ggsave(file.path(write_output_base_path,"trigger_proportion.pdf"),  p, width=5, height=3.5)
-ggsave(file.path(write_output_base_path,"trigger_proportion.svg"),  p, width=5, height=3.5)
-
-
-### Create Table of occurences
-trig_occur <- subset(stor_bar, select=c("data", "trigger"))
-trig_occur <- table(trig_occur)
-trig_occur
-
-### Calculate total number of time steps and then divide to create proportions
-total_time_steps <- apply(trig_occur, 1, sum)
-#
-trig_prop <- sweep(trig_occur, 1, total_time_steps, FUN="/")
-
-
-### Calculate chi-square pairs
-chi_p <- matrix(NA, dim(trig_occur)[1], dim(trig_occur)[1])
-colnames(chi_p) <- rownames(trig_occur)
-rownames(chi_p) <- rownames(trig_occur)
-
-for(i in seq(1, dim(trig_occur)[1])){
-	for(j in seq(1, dim(trig_occur)[1])){
-		if (i > j) {
-			chi_result <- chisq.test(trig_occur[c(i,j),], simulate.p.value=TRUE)
-			chi_p[i,j] <- chi_result$p.value
-		}	
-	}
+return(list(reliability=reliability, resilience=resilience, vulnerability = vulnerability))
 }
 
 
-### Write data
-trig_occur <- cbind(trig_occur, total_time_steps)
-
-write.csv(trig_prop , file.path(write_output_base_path,"trigger_proportion.csv") )
-write.csv(trig_occur , file.path(write_output_base_path,"trigger_occur.csv") )
-write.csv(chi_p , file.path(write_output_base_path,"trigger_chi_p.csv") )
 
 
 
 
+hash_perform(demand=demand_wide$SA2[demand_wide$data == "paleo"], delivery=deliv_wide$SA2[deliv_wide$data == "paleo"])
 
+hash_perform(demand=demand_wide$SA3[demand_wide$data == "paleo"], delivery=deliv_wide$SA3[deliv_wide$data == "paleo"])
 
+hash_perform(demand=demand_wide$SA4[demand_wide$data == "paleo"], delivery=deliv_wide$SA4[deliv_wide$data == "paleo"])
 
+hash_perform(demand=demand_wide$SA5[demand_wide$data == "paleo"], delivery=deliv_wide$SA5[deliv_wide$data == "paleo"])
 
-
+hash_perform(demand=demand_wide$SA6[demand_wide$data == "paleo"], delivery=deliv_wide$SA6[deliv_wide$data == "paleo"])
 
 
 
 
 
 
+hash_perform <- function(site, demand,  delivery){
+### Follows Hashimoto, T., Stedinger, J.R., Loucks, D.P., 1982. Reliability, resiliency, and vulnerability criteria for water resource system performance evaluation. Water Resour. Res. 18, 14–20. https://doi.org/10.1029/WR018i001p00014
+### Also used https://agupubs.onlinelibrary.wiley.com/doi/epdf/10.1029/2002WR001778
+demand <- demand[,names(demand) %in% site]
+delivery <- delivery[,names(delivery) %in% site]
 
-"green", "yellow", "red"
-"#4daf4a", "#ffff33", "#e41a1c"
+shortage <- demand - delivery
 
-"#000004FF" "#330A5FFF" "#781C6DFF" "#BB3754FF" "#ED6925FF" "#FCB519FF"
-[7] "#FCFFA4FF"
+sat <- shortage <= 0
+unsat <- shortage > 0
 
-"100-01-01", "1903-12-01"
-viridis(6, option="inferno")
+sat_lag <- c(sat[seq(2, length(sat))], NA)
+w_trans <- unsat == TRUE & sat_lag == TRUE
 
-p + scale_fill_viridis(option="inferno", discrete=TRUE)
+time_length <- sum(!is.na(shortage))
+
+### Reliability
+### Fraction of time that demand is met
+reliability <- sum(sat, na.rm=TRUE)/time_length
+
+### Resilience
+### Average probability of recovery in any given failure time step
+resilience <- sum(w_trans, na.rm=TRUE)/ (time_length - sum(sat, na.rm=TRUE))
+
+### Vulnerability
+### Maximum shortage
+vulnerability <- max(shortage, na.rm=TRUE)
+
+return(list(reliability=reliability, resilience=resilience, vulnerability = vulnerability))
+}
+
+site_names <- c(paste0("SA", seq(1,20)), "system")
+data_names <- levels(demand_wide$data)
+
+for (i in seq(1,length(data_names))){
+	data_i <- data_names[[i]]
+	
+	hash_temp <- sapply(site_names, hash_perform, demand=demand_wide[demand_wide$data==data_i,], delivery=deliv_wide[deliv_wide$data==data_i,])
+	hash_temp <- t(hash_temp)
+	
+	hash_temp <- data.frame(data=data_i, site=site_names, hash_temp)
+
+	if (i == 1){
+		hash_df <- hash_temp
+	} else {
+		hash_df <- rbind(hash_df, hash_temp)
+	}
+}
+
+hash_df$reliability <- as.numeric(hash_df$reliability)
+hash_df$resilience <- as.numeric(hash_df$resilience)
+hash_df$vulnerability <- as.numeric(hash_df$vulnerability)
+hash_df$data <- factor(hash_df$data, levels=c("paleo", "observed", "base", "ww", "wd", "hw", "hd"))
+hash_df$site <- factor(hash_df$site, levels=c(paste0("SA", seq(1,20)),"system"))
+
+
+
+p <- ggplot(subset(hash_df, data=="SA2"), aes(x=site, y=resilience))
+p <- p + geom_bar()
+p <- p + theme_classic()
+p
+
+
+p <- ggplot(hash_df, aes(x=site, y=resilience, fill=data))
+p <- p +  geom_bar(position="dodge", stat="identity")
+p <- p + theme_classic()
+p
+
+
+p <- ggplot(hash_df, aes(x=site, y=reliability, fill=data))
+p <- p +  geom_bar(position="dodge", stat="identity")
+p <- p + scale_fill_manual(name="Scenario", values= c("green", "black", "grey30", "orange", "red"), limits=c("paleo", "observed", "base", "hw", "hd"), guide = guide_legend())
+p <- p + theme_classic()
+p
+
+p <- ggplot(subset(hash_df, data= c("paleo", "observed", "base", "hw", "hd")), aes(x=site, y=resilience, fill=data))
+p <- p +  geom_bar(position="dodge", stat="identity")
+p <- p + scale_fill_manual(name="Scenario", values= c("green", "black", "grey30", "orange", "red"), limits=c("paleo", "observed", "base", "hw", "hd"), guide = guide_legend())
+p <- p + theme_classic()
+p
+
+
+
+p <- ggplot(hash_df[hash_df$data %in% c("paleo", "observed", "base", "hw", "hd"), ], aes(x=site, y=resilience, fill=data))
+p <- p +  geom_bar(position="dodge", stat="identity")
+p <- p + scale_fill_manual(name="Scenario", values= c("green", "black", "grey30", "orange", "red"), limits=c("paleo", "observed", "base", "hw", "hd"), guide = guide_legend())
+p <- p + theme_classic()
+p
+
+
+p <- ggplot(hash_df[hash_df$data %in% c("paleo", "observed", "base", "hw", "hd"), ], aes(x=site, y=reliability, fill=data))
+p <- p +  geom_bar(position="dodge", stat="identity")
+p <- p + scale_fill_manual(name="Scenario", values= c("green", "black", "grey30", "orange", "red"), limits=c("paleo", "observed", "base", "hw", "hd"), guide = guide_legend())
+p <- p + theme_classic()
+p
+
+
+p <- ggplot(hash_df[hash_df$data %in% c("paleo", "observed", "base", "hw", "hd"), ], aes(x=site, y=vulnerability, fill=data))
+p <- p +  geom_bar(position="dodge", stat="identity")
+p <- p + scale_fill_manual(name="Scenario", values= c("green", "black", "grey30", "orange", "red"), limits=c("paleo", "observed", "base", "hw", "hd"), guide = guide_legend())
+p <- p + theme_classic()
+p
+
+
+
+labels=c( "Observed", "Reconstr", "Climate Change (HD)"), 
 
 
 
 
+
+sapply(site_names, hash_perform, demand=demand_wide[demand_wide$data=="paleo",], delivery=deliv_wide[deliv_wide$data=="paleo",])
+
+sapply(site_names, hash_perform, demand=demand_wide[demand_wide$data=="hd",], delivery=deliv_wide[deliv_wide$data=="hd",])
 

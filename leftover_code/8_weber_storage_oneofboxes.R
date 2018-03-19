@@ -186,9 +186,6 @@ stor_all$wy <- usgs_wateryear(year=stor_all$year, month=stor_all$month)
 ### Make months a factor
 stor_all$month <- factor(stor_all$month, levels=c(seq(10, 12), seq(1,9)))
 
-### Sum all reservoirs
-stor_all$total_res <- apply(stor_all[,2:11],1,sum, na.rm=TRUE)
-
 ###########################################################################
 ###  Calculate Percent Storage
 ###########################################################################
@@ -198,10 +195,9 @@ res_test <- names(stor_percent) %in% paste0("res_", seq(1,10))
 ### Divide each reservoir by its total storage
 stor_percent[,res_test] <- sweep(stor_percent[,res_test], 2, c(total_storage$Total, NA, NA), "/")
 
-### Divide for total system storage
-stor_percent$total_res <- stor_percent$total_res / sum(total_storage$Total, na.rm=TRUE)
 
 head(stor_percent)
+
 
 ###########################################################################
 ###  Calculate Triggers
@@ -210,24 +206,18 @@ weber_triggers$moderate <- weber_triggers[,2] * 0.7
 weber_triggers$severe <- weber_triggers[,2] * 0.5
 weber_triggers$extreme <- weber_triggers[,2] * 0.25
 
-### Estimate annual trigger for plots based on June storage
-#mod_annual <- mean(weber_triggers$moderate)
-#sev_annual <- mean(weber_triggers$severe)
-#ext_annual <- mean(weber_triggers$extreme)
-mod_annual <- weber_triggers$moderate[6]
-sev_annual <- weber_triggers$severe[6]
-ext_annual <- weber_triggers$extreme[6]
-
 ### Calculate trigger percents based on storage
 total_system_stor <- sum(total_storage$Total, na.rm=TRUE)
 weber_triggers$mod_perc <- weber_triggers$moderate/total_system_stor
 weber_triggers$sev_perc <- weber_triggers$severe/total_system_stor
 weber_triggers$ext_perc <- weber_triggers$extreme/total_system_stor
 
-### Estimate annual trigger for plots based on May storage
-mod_perc_annual <- weber_triggers$mod_perc[6]
-sev_perc_annual <- weber_triggers$sev_perc[6]
-ext_perc_annual <- weber_triggers$ext_perc[6]
+### Calculate annual trigger percents based on storage
+mod_perc_annual <- mean(weber_triggers$mod_perc)
+sev_perc_annual <- mean(weber_triggers$sev_perc)
+ext_perc_annual <- mean(weber_triggers$ext_perc)
+
+
 
 ###########################################################################
 ###  Calculate Regions
@@ -254,20 +244,14 @@ upper_ogden <- paste0("res_",seq(1,5))
 upper_weber <- paste0("res_",seq(6,7)) 
 lower <- paste0("res_",seq(8,10)) 
 
-### Calculate storage by region
+###
 stor_all$upper_ogden <- apply(stor_all[,seq(2,6)],1,sum, na.rm=TRUE)
 stor_all$upper_weber <- apply(stor_all[,seq(7,8)],1,sum, na.rm=TRUE)
 stor_all$lower <- apply(stor_all[,seq(9,11)],1,sum, na.rm=TRUE)
+stor_all$system <- stor_all$upper_ogden + stor_all$upper_weber + stor_all$lower
 
-max_stor <- max(stor_all$total_res, na.rm=TRUE)
-stor_all$system_def <- max_stor - stor_all$total_res
-
-
-### Calculate storage percent by region
-stor_percent$upper_ogden <- stor_all$upper_ogden / sum(total_storage$Total[seq(1,5)], na.rm=TRUE)
-stor_percent$upper_weber <- stor_all$upper_weber / sum(total_storage$Total[seq(6,7)], na.rm=TRUE)
-stor_percent$lower <- stor_all$lower  / sum(total_storage$Total[seq(8,10)], na.rm=TRUE)
-
+max_stor <- max(stor_all$system, na.rm=TRUE)
+stor_all$system_def <- max_stor - stor_all$system
 
 
 ###########################################################################
@@ -293,9 +277,9 @@ severe_trigger <- trigger_df$trigger * 0.5
 extreme_trigger <- trigger_df$trigger * 0.25
 
 
-stor_all$moderate <- moderate_trigger - stor_all$total_res
-stor_all$severe <- severe_trigger - stor_all$total_res
-stor_all$extreme <- extreme_trigger - stor_all$total_res
+stor_all$moderate <- moderate_trigger - stor_all$system
+stor_all$severe <- severe_trigger - stor_all$system
+stor_all$extreme <- extreme_trigger - stor_all$system
 
 ### Clear all negative deficits (above threshold) 
 stor_all$moderate[stor_all$moderate < 0] <- 0
@@ -307,70 +291,20 @@ stor_all$moderate[stor_all$moderate > (moderate_trigger -severe_trigger)] <- (mo
 stor_all$severe[stor_all$severe > (severe_trigger - extreme_trigger)] <- (severe_trigger - extreme_trigger)[stor_all$severe > (severe_trigger - extreme_trigger)] 
 
 
-#### Plot triggers
-plot_triggers <- weber_triggers
-plot_triggers$total <-  sum(total_storage$Total)
-names(plot_triggers)[2] <- "Mean 2013-2017"
-plot_triggers <- melt(plot_triggers[,c(seq(1,5), 9)], "Month")
-names(plot_triggers)[3] <- "storage"
-plot_triggers$perc <- plot_triggers$storage / sum(total_storage$Total)
-
-p <- ggplot(plot_triggers, aes(x=Month, y=storage/1000, colour=variable))
-#p <- ggplot(yup, aes(x=date, y=value/1000, fill=variable))
-p <- p + geom_line(size=0.8)
-#p <- p + geom_line(data=trigger_plot, aes(y=res_stor/1000, group=trigger_level, fill=NA), colour="grey30", linetype="longdash", size=0.8)
-p <- p + theme_classic_new(11)
-p <- p + scale_colour_manual(name="", values= c( "#ffeda0", "#feb24c", "#f03b20", "#8da0cb", "grey50"), limits= c( "moderate", "severe", "extreme", "Mean 2013-2017", "total"), labels=c("Moderate Trigger", "Severe Trigger", "Extreme Trigger", "Mean 2013-2017", "Full Storage"), guide = guide_legend(nrow=2,byrow=TRUE))
-p <- p + scale_x_continuous(name="Month", breaks=seq(1,12,1))
-p <- p + scale_y_continuous(name="Total System Storage (1,000 ac-ft)", breaks=seq(0, 600, 100))
-p <- p + coord_cartesian(xlim=c(1,12), ylim=c(0,sum(total_storage$Total/1000)*1.1), expand=FALSE)
-p <- p + theme(legend.position="bottom")
-p
-
-### Save figures
-ggsave(file.path(write_output_base_path,"trigger_levels_perc.png"),  p, width=4.5, height=4, dpi=600)
-ggsave(file.path(write_output_base_path,"trigger_levels_perc.pdf"),  p, width=4.5, height=4)
-ggsave(file.path(write_output_base_path,"trigger_levels_perc.svg"),  p, width=4.5, height=4)
-
-
-p <- ggplot(plot_triggers, aes(x=Month, y=perc, colour=variable))
-#p <- ggplot(yup, aes(x=date, y=value/1000, fill=variable))
-p <- p + geom_line(size=0.8)
-#p <- p + geom_line(data=trigger_plot, aes(y=res_stor/1000, group=trigger_level, fill=NA), colour="grey30", linetype="longdash", size=0.8)
-p <- p + theme_classic_new(11)
-p <- p + scale_colour_manual(name="", values= c( "#ffeda0", "#feb24c", "#f03b20", "#8da0cb", "grey50"), limits= c( "moderate", "severe", "extreme", "Mean 2013-2017", "total"), labels=c("Moderate Trigger", "Severe Trigger", "Extreme Trigger", "Mean 2013-2017", "Full Storage"), guide = guide_legend(nrow=2,byrow=TRUE))
-p <- p + scale_x_continuous(name="Month", breaks=seq(1,12,1))
-#p <- p + scale_y_continuous(name="Total System Storage (%)", breaks=seq(0, 1, 0.1), labels=percent)
-p <- p + scale_y_continuous(name="Total System Storage (%)", breaks= seq(0, 1, 0.1), labels = c("0", "", "20%", "", "40%", "", "60%", "", "80%", "", "100%"))
-p <- p + coord_cartesian(xlim=c(1,12), ylim=c(0,1.02), expand=FALSE)
-p <- p + theme(legend.position="bottom")
-p
-
-### Save figures
-ggsave(file.path(write_output_base_path,"trigger_levels_perc.png"),  p, width=4.5, height=4, dpi=600)
-ggsave(file.path(write_output_base_path,"trigger_levels_perc.pdf"),  p, width=4.5, height=4)
-ggsave(file.path(write_output_base_path,"trigger_levels_perc.svg"),  p, width=4.5, height=4)
-
 ###########################################################################
 ###  Test plots
 ###########################################################################
 p <- ggplot(stor_all, aes(x=month))
-p <- p + geom_line(aes(y=total_res, group=wy, colour=data), size=0.3)
+p <- p + geom_line(aes(y=system, group=wy, colour=data), size=0.3)
 p <- p + theme_classic_new()
 p
 
 
 p <- ggplot(stor_all, aes(x=date, fill=data))
-p <- p + geom_area(aes(y=total_res), size=0.3, position="identity")
+p <- p + geom_area(aes(y=system), size=0.3, position="identity")
 p <- p + theme_classic_new()
 p
 
-### Check plot
-p <- ggplot(subset(stor_percent, data!="base") , aes(colour=data))
-p <- p + geom_line(aes(x=date, y=total_res), size=0.3)
-p <- p + geom_line(data=subset(stor_percent, data=="base"), aes(x=base_date, y=total_res), size=0.3)
-p <- p + theme_classic_new()
-p
 
 
 ###########################################################################
@@ -390,16 +324,13 @@ stor_all$precip[stor_all$data == "hw" | stor_all$data == "ww"] <- "Wet"
 stor_all$precip[stor_all$data == "base"] <- "Base"
 stor_all$precip <- factor(stor_all$precip, levels= c("Base", "Wet", "Dry"))
 
-### Add to Percent
-stor_percent$temp <- stor_all$temp 
-stor_percent$precip <- stor_all$precip 
 
 ###########################################################################
-## Plot Storage Time Series as Area
+## Plot Storage Time Series
 ###########################################################################
 area_df <- stor_all[stor_all$data %in% c("paleo", "observed", "hd"),]
 
-p <- ggplot(area_df, aes(x=date, y=total_res/1000, fill=data))
+p <- ggplot(area_df, aes(x=date, y=system/1000, fill=data))
 p <- p + geom_area( position = "identity", alpha=0.8)
 p <- p + geom_hline(yintercept=0, size=0.2)
 #p <- p + geom_line(data=base_df, colour="grey30")
@@ -427,27 +358,42 @@ ggsave(file.path(write_output_base_path,"paleo_future_stor_area_acft_hd_1900.png
 ggsave(file.path(write_output_base_path,"paleo_future_stor_area_acft_hd_1900.pdf"),  p, width=8, height=3.5)
 ggsave(file.path(write_output_base_path,"paleo_future_stor_area_acft_hd_1900.svg"),  p, width=8, height=3.5)
 
-###########################################################################
-## Plot Storage Time Series as Line
-###########################################################################
-line_df <- stor_all[stor_all$data %in% c("paleo", "observed", "hd"),]
-line_df2 <- stor_all[stor_all$data %in% c("base"),]
-line_df2$date <- line_df2$base_date
-line_df <- rbind(line_df, line_df2)
 
-p <- ggplot(line_df, aes(x=date, y=total_res/1000, colour=data))
-p <- p + geom_line()#, alpha=0.8)
-p <- p + geom_hline(yintercept=0, size=0.2)
-#p <- p + geom_line(data=base_df, colour="grey30")
-#p <- p + geom_area( data=base_df, position = "identity", alpha=0.5)
+###########################################################################
+## Plot Storage percent Time Series
+###########################################################################
+### Create percentile plot dataframe
+perc_plot <- stor_percent[stor_all$data %in% c("paleo", "observed", "hd"),]
+
+### Create dataframe for triggers
+trigger_plot <- data.frame(date = rep(c(min(perc_plot$date), max(perc_plot$date)), 3))
+trigger_plot$month <- month(trigger_plot$date)
+trigger_plot$year <- year(trigger_plot$date)
+
+### Add water year column
+trigger_plot$wy <- usgs_wateryear(year=trigger_plot$year, month=trigger_plot$month)
+
+### Add triggers
+trigger_plot$trigger_level <- rep(c("Moderate", "Severe", "Extreme"), each=2)
+trigger_plot$trigger_level <- factor(trigger_plot$trigger_level, levels=c("Moderate", "Severe", "Extreme"))
+trigger_plot$res_perc <- rep(c(mod_perc_annual-sev_perc_annual, sev_perc_annual-ext_perc_annual, ext_perc_annual), each=2)
+
+
+### To plot
+p <- ggplot(perc_plot, aes(x=date, y=res_1))
+p <- p + geom_area(data=trigger_plot, aes(y=res_perc, fill=trigger_level))
+p <- p + geom_line(aes(y=res_1, group=data))
+#p <- p + geom_line(data=trigger_plot, aes(y=mod_perc_annual), col="red")
+#p <- p + geom_line(data=trigger_plot, aes(y=ext_perc_annual), col="green")
+#p <- p + geom_line(data=trigger_plot, aes(y=sev_perc_annual), col="blue")
 p <- p + theme_classic_new()
-#p <- p + scale_fill_manual(name="Scenario", values= c("grey30", "grey30", cc_colors), labels=c("Observed", "Base", "HD", "HW", "WD", "WW", "Reconst" ))
-p <- p + scale_colour_manual(name="Scenario", values= c("grey30", "#1f78b4", "#CC79A7", "#D55E00"), labels=c( "Observed", "Base", "Reconstr", "Climate Change (HD)"), limits=c("observed", "base", "paleo", "hd"), guide = guide_legend())
-p <- p + coord_cartesian(xlim=c(as.Date("1425-01-01"), as.Date("2070-01-01")), expand=FALSE)
+p <- p + scale_fill_manual(name="Storage Trigger", values= c("#f03b20",  "#feb24c", "#ffeda0"), limits= c("Extreme", "Severe", "Moderate"), labels=c("Extreme", "Severe", "Moderate"), guide = guide_legend())
+p <- p + coord_cartesian(xlim=c(as.Date("1428-01-01"), as.Date("2070-01-01")), ylim=c(0,1), expand=FALSE)
 p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="50 years"), date_labels = "%Y")
-p <- p + scale_y_continuous(name="System Storage (1,000 ac-ft)", breaks=seq(0,800,100))
+p <- p + scale_y_continuous(name="Percent Storage", breaks=seq(0,1,0.1), labels=percent)
 p <- p + theme(legend.position="bottom")
 p
+
 
 ### Save figures
 ggsave(file.path(write_output_base_path,"paleo_future_stor_area_acft_hd_full.png"),  p, width=8, height=3.5, dpi=300)
@@ -462,172 +408,6 @@ p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("21
 ggsave(file.path(write_output_base_path,"paleo_future_stor_area_acft_hd_1900.png"),  p, width=8, height=3.5, dpi=300)
 ggsave(file.path(write_output_base_path,"paleo_future_stor_area_acft_hd_1900.pdf"),  p, width=8, height=3.5)
 ggsave(file.path(write_output_base_path,"paleo_future_stor_area_acft_hd_1900.svg"),  p, width=8, height=3.5)
-
-
-
-###########################################################################
-## Plot Storage percent Time Series
-###########################################################################
-### Create percentile plot dataframe
-perc_plot <- stor_percent[stor_all$data %in% c("base"),]
-perc_plot$date <- perc_plot$base_date
-
-perc_temp <- stor_percent[stor_all$data %in% c("paleo", "observed", "hd"),]
-perc_test <- perc_temp$date < min(perc_plot$date) | perc_temp$date > max(perc_plot$date)
-perc_plot <- rbind(perc_temp[perc_test, ], perc_plot)
-
-### Previously just this
-# perc_plot <- stor_percent[stor_all$data %in% c("paleo", "observed", "hd"),]
-
-
-### Create dataframe for triggers
-trigger_plot <- data.frame(date = rep(c(min(perc_plot$date), max(perc_plot$date)), 3))
-trigger_plot$month <- month(trigger_plot$date)
-trigger_plot$year <- year(trigger_plot$date)
-
-### Add water year column
-trigger_plot$wy <- usgs_wateryear(year=trigger_plot$year, month=trigger_plot$month)
-
-### Add triggers
-trigger_plot$trigger_level <- rep(c("Moderate", "Severe", "Extreme"), each=2)
-trigger_plot$trigger_level <- factor(trigger_plot$trigger_level, levels=c("Moderate", "Severe", "Extreme"))
-trigger_plot$res_perc <- rep(c(mod_perc_annual-sev_perc_annual, sev_perc_annual-ext_perc_annual, ext_perc_annual), each=2)
-### This line wasn't previously in here
-trigger_plot$res_stor <- rep(c(mod_annual, sev_annual, ext_annual), each=2)
-
-### To plot
-p <- ggplot(perc_plot, aes(x=date, y=total_res))
-p <- p + geom_area(data=trigger_plot, aes(y=res_perc, fill=trigger_level))
-p <- p + geom_line(aes(group=data), size=0.12)
-#p <- p + geom_line(data=trigger_plot, aes(y=mod_perc_annual), col="red")
-#p <- p + geom_line(data=trigger_plot, aes(y=ext_perc_annual), col="green")
-#p <- p + geom_line(data=trigger_plot, aes(y=sev_perc_annual), col="blue")
-p <- p + theme_classic_new()
-p <- p + scale_fill_manual(name="Storage Trigger", values= c("#f03b20",  "#feb24c", "#ffeda0"), limits= c("Extreme", "Severe", "Moderate"), labels=c("Extreme", "Severe", "Moderate"), guide = guide_legend())
-p <- p + coord_cartesian(xlim=c(as.Date("1428-01-01"), as.Date("2070-01-01")), ylim=c(0,1), expand=FALSE)
-p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="50 years"), date_labels = "%Y")
-p <- p + scale_y_continuous(name="Percent Storage", breaks=seq(0,1,0.1), labels=percent)
-p <- p + theme(legend.position="bottom")
-p
-
-
-### Save figures
-ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_full.png"),  p, width=8, height=3.5, dpi=300)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_full.pdf"),  p, width=8, height=3.5)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_full.svg"),  p, width=8, height=3.5)
-
-### Cut to 1900s
-p <- p + coord_cartesian(xlim=c(as.Date("1920-01-01"), as.Date("2066-01-01")))
-p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="10 years"), date_labels = "%Y")
-
-### Save figures
-ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_1900.png"),  p, width=8, height=3.5, dpi=300)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_1900.pdf"),  p, width=8, height=3.5)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_1900.svg"),  p, width=8, height=3.5)
-
-
-
-
-
-### To plot
-p <- ggplot(perc_plot, aes(x=date, y=upper_ogden))
-p <- p + geom_area(data=trigger_plot, aes(y=res_perc, fill=trigger_level))
-p <- p + geom_line(aes(group=data), size=0.12)
-#p <- p + geom_line(data=trigger_plot, aes(y=mod_perc_annual), col="red")
-#p <- p + geom_line(data=trigger_plot, aes(y=ext_perc_annual), col="green")
-#p <- p + geom_line(data=trigger_plot, aes(y=sev_perc_annual), col="blue")
-p <- p + theme_classic_new()
-p <- p + scale_fill_manual(name="Storage Trigger", values= c("#f03b20",  "#feb24c", "#ffeda0"), limits= c("Extreme", "Severe", "Moderate"), labels=c("Extreme", "Severe", "Moderate"), guide = guide_legend())
-p <- p + coord_cartesian(xlim=c(as.Date("1428-01-01"), as.Date("2070-01-01")), ylim=c(0,1), expand=FALSE)
-p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="50 years"), date_labels = "%Y")
-p <- p + scale_y_continuous(name="Percent Storage", breaks=seq(0,1,0.1), labels=percent)
-p <- p + theme(legend.position="bottom")
-p
-
-
-### Save figures
-ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_full_upper_ogden.png"),  p, width=8, height=3.5, dpi=300)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_full_upper_ogden.pdf"),  p, width=8, height=3.5)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_full_upper_ogden.svg"),  p, width=8, height=3.5)
-
-### Cut to 1900s
-p <- p + coord_cartesian(xlim=c(as.Date("1920-01-01"), as.Date("2066-01-01")))
-p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="10 years"), date_labels = "%Y")
-
-### Save figures
-ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_1900_upper_ogden.png"),  p, width=8, height=3.5, dpi=300)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_1900_upper_ogden.pdf"),  p, width=8, height=3.5)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_1900_upper_ogden.svg"),  p, width=8, height=3.5)
-
-
-
-
-### To plot
-p <- ggplot(perc_plot, aes(x=date, y=upper_weber))
-p <- p + geom_area(data=trigger_plot, aes(y=res_perc, fill=trigger_level))
-p <- p + geom_line(aes(group=data), size=0.12)
-### This line previously looked like this:
-# p <- p + geom_line(aes(y=res_1, group=data))
-#p <- p + geom_line(data=trigger_plot, aes(y=mod_perc_annual), col="red")
-#p <- p + geom_line(data=trigger_plot, aes(y=ext_perc_annual), col="green")
-#p <- p + geom_line(data=trigger_plot, aes(y=sev_perc_annual), col="blue")
-p <- p + theme_classic_new()
-p <- p + scale_fill_manual(name="Storage Trigger", values= c("#f03b20",  "#feb24c", "#ffeda0"), limits= c("Extreme", "Severe", "Moderate"), labels=c("Extreme", "Severe", "Moderate"), guide = guide_legend())
-p <- p + coord_cartesian(xlim=c(as.Date("1428-01-01"), as.Date("2070-01-01")), ylim=c(0,1), expand=FALSE)
-p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="50 years"), date_labels = "%Y")
-p <- p + scale_y_continuous(name="Percent Storage", breaks=seq(0,1,0.1), labels=percent)
-p <- p + theme(legend.position="bottom")
-p
-
-
-### Save figures
-ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_full_upper_weber.png"),  p, width=8, height=3.5, dpi=300)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_full_upper_weber.pdf"),  p, width=8, height=3.5)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_full_upper_weber.svg"),  p, width=8, height=3.5)
-
-### Cut to 1900s
-p <- p + coord_cartesian(xlim=c(as.Date("1920-01-01"), as.Date("2066-01-01")))
-p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="10 years"), date_labels = "%Y")
-
-### Save figures
-ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_1900_upper_weber.png"),  p, width=8, height=3.5, dpi=300)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_1900_upper_weber.pdf"),  p, width=8, height=3.5)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_1900_upper_weber.svg"),  p, width=8, height=3.5)
-
-
-
-### To plot
-p <- ggplot(perc_plot, aes(x=date, y=lower))
-p <- p + geom_area(data=trigger_plot, aes(y=res_perc, fill=trigger_level))
-p <- p + geom_line(aes(group=data), size=0.12)
-#p <- p + geom_line(data=trigger_plot, aes(y=mod_perc_annual), col="red")
-#p <- p + geom_line(data=trigger_plot, aes(y=ext_perc_annual), col="green")
-#p <- p + geom_line(data=trigger_plot, aes(y=sev_perc_annual), col="blue")
-p <- p + theme_classic_new()
-p <- p + scale_fill_manual(name="Storage Trigger", values= c("#f03b20",  "#feb24c", "#ffeda0"), limits= c("Extreme", "Severe", "Moderate"), labels=c("Extreme", "Severe", "Moderate"), guide = guide_legend())
-p <- p + coord_cartesian(xlim=c(as.Date("1428-01-01"), as.Date("2070-01-01")), ylim=c(0,1), expand=FALSE)
-p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="50 years"), date_labels = "%Y")
-p <- p + scale_y_continuous(name="Percent Storage", breaks=seq(0,1,0.1), labels=percent)
-p <- p + theme(legend.position="bottom")
-p
-
-
-### Save figures
-ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_full_lower.png"),  p, width=8, height=3.5, dpi=300)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_full_lower.pdf"),  p, width=8, height=3.5)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_full_lower.svg"),  p, width=8, height=3.5)
-
-### Cut to 1900s
-p <- p + coord_cartesian(xlim=c(as.Date("1920-01-01"), as.Date("2066-01-01")))
-p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="10 years"), date_labels = "%Y")
-
-### Save figures
-ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_1900_lower.png"),  p, width=8, height=3.5, dpi=300)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_1900_lower.pdf"),  p, width=8, height=3.5)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_1900_lower.svg"),  p, width=8, height=3.5)
-
-
-
 
 
 names(perc_plot)[2:9] <- as.character(total_storage$Name)
@@ -662,22 +442,19 @@ ggsave(file.path(write_output_base_path,"paleo_future_stor_perc.pdf"),  p, width
 ###########################################################################
 ## Plot Shortage Time Series by region
 ###########################################################################
-area_df <- stor_all[stor_all$data %in% c("paleo", "observed", "base", "hd"),]
-area_region <- area_df[, names(area_df) %in% c("date", "base_date", "data", "upper_ogden", "upper_weber", "lower")]
-area_region <- melt(area_region, id.vars=c("date", "base_date", "data"))#, measure.vars=c("upper_ogden", "upper_weber", "lower"))
+area_region <- area_df[, names(area_df) %in% c("date", "data", "upper_ogden", "upper_weber", "lower")]
+area_region <- melt(area_region, id.vars=c("date", "data"))#, measure.vars=c("upper_ogden", "upper_weber", "lower"))
 area_region$data <- factor(area_region$data)
-area_region$variable <- factor(area_region$variable, levels=c("upper_weber", "upper_ogden", "lower"))
+area_region$variable <- factor(area_region$variable)
 
 p <- ggplot(subset(area_region, data=="observed"), aes(x=date, y=value/1000, fill=variable))
 #p <- ggplot(yup, aes(x=date, y=value/1000, fill=variable))
 p <- p + geom_area()
-p <- p + geom_area(data=subset(area_region, data=="paleo" & date < as.Date("1980-10-01")))
+p <- p + geom_area(data=subset(area_region, data=="paleo"))
 p <- p + geom_area(data=subset(area_region, data=="hd"))
-p <- p + geom_area(data=subset(area_region, data=="base"), aes(x=base_date))
-p <- p + geom_line(data=trigger_plot, aes(y=res_stor/1000, group=trigger_level, fill=NA), colour="grey30", linetype="longdash", size=0.5)
 p <- p + theme_classic_new()
 #p <- p + scale_fill_manual(name="Scenario", values= c("grey30", "grey30", cc_colors), labels=c("Observed", "Base", "HD", "HW", "WD", "WW", "Reconst" ))
-p <- p + scale_fill_manual(name="Region", values= res_colors, labels=c("Upper Weber", "Upper Ogden", "Lower Weber"), breaks=c("upper_weber", "upper_ogden", "lower"), guide = guide_legend())
+p <- p + scale_fill_manual(name="Region", values= res_colors, labels=c("Upper Ogden", "Upper Weber", "Lower Weber"), guide = guide_legend())
 p <- p + coord_cartesian(xlim=c(as.Date("1425-01-01"), as.Date("2070-01-01")), expand=FALSE)
 p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="50 years"), date_labels = "%Y")
 p <- p + scale_y_continuous(name="System Storage (1,000 ac-ft)", breaks=seq(0,800,100))
@@ -699,31 +476,6 @@ p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("21
 ggsave(file.path(write_output_base_path,"paleo_future_stor_byregion_acft_hd_1900.png"),  p, width=8, height=3.5, dpi=300)
 ggsave(file.path(write_output_base_path,"paleo_future_stor_byregion_acft_hd_1900.pdf"),  p, width=8, height=3.5)
 ggsave(file.path(write_output_base_path,"paleo_future_stor_byregion_acft_hd_1900.svg"),  p, width=8, height=3.5)
-
-
-
-### THere were differences in this figure, here's how it used to look
-
-#area_region <- area_df[, names(area_df) %in% c("date", "data", "upper_ogden", "upper_weber", "lower")]
-#area_region <- melt(area_region, id.vars=c("date", "data"))#, measure.vars=c("upper_ogden", "upper_weber", "lower"))
-#area_region$data <- factor(area_region$data)
-#area_region$variable <- factor(area_region$variable)
-
-#p <- ggplot(subset(area_region, data=="observed"), aes(x=date, y=value/1000, fill=variable))
-#p <- ggplot(yup, aes(x=date, y=value/1000, fill=variable))
-#p <- p + geom_area()
-#p <- p + geom_area(data=subset(area_region, data=="paleo"))
-#p <- p + geom_area(data=subset(area_region, data=="hd"))
-#p <- p + theme_classic_new()
-#p <- p + scale_fill_manual(name="Scenario", values= c("grey30", "grey30", cc_colors), labels=c("Observed", "Base", "HD", "HW", "WD", "WW", "Reconst" ))
-#p <- p + scale_fill_manual(name="Region", values= res_colors, labels=c("Upper Ogden", "Upper Weber", "Lower Weber"), guide = guide_legend())
-#p <- p + coord_cartesian(xlim=c(as.Date("1425-01-01"), as.Date("2070-01-01")), expand=FALSE)
-#p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="50 years"), date_labels = "%Y")
-#p <- p + scale_y_continuous(name="System Storage (1,000 ac-ft)", breaks=seq(0,800,100))
-#p <- p + theme(legend.position="bottom")
-#p
-
-
 
 
 
@@ -824,7 +576,7 @@ line_df$data <- area_df$data
 line_df$precip <- area_df$precip
 line_df$temp <- area_df$temp
 
-p <- ggplot(area_df, aes(x=date, y=total_res/1000))
+p <- ggplot(area_df, aes(x=date, y=system/1000))
 p <- p + geom_area(aes(fill=data))
 p <- p + geom_hline(yintercept=0)
 p <- p + geom_line(data=line_df, colour="black")#, linetype="longdash")
@@ -860,7 +612,7 @@ area_region <- area_df[, names(area_df) %in% c("date", "data", "upper_ogden", "u
 area_region <- melt(area_region, id.vars=c("date", "data"))#, measure.vars=c("upper_ogden", "upper_weber", "lower"))
 area_region$data <- factor(area_region$data)
 area_region$variable <- factor(area_region$variable)
-line_df$value <- line_df$total_res
+line_df$value <- line_df$system
 
 p <- ggplot(area_region, aes(x=date, y=value/1000))
 p <- p + geom_area(aes(fill=variable))
@@ -929,7 +681,7 @@ for (i in seq(1, dim(drought_event_summary)[1])){
 	drought_event_summary$upper_ogden_min[i] <- min(stor_i$upper_ogden, na.rm=TRUE)
 	drought_event_summary$upper_weber_min[i] <- min(stor_i$upper_weber, na.rm=TRUE)
 	drought_event_summary$lower_min[i] <- min(stor_i$lower, na.rm=TRUE)
-	drought_event_summary$system_min[i] <- min(stor_i$total_res, na.rm=TRUE)
+	drought_event_summary$system_min[i] <- min(stor_i$system, na.rm=TRUE)
 	}
 }
 
@@ -1056,9 +808,9 @@ magma### no
 plot_triggers <- merge(plot_df, weber_triggers, by.x="month", by.y="Month")
 
 plot_df$trigger <- "None"
-plot_df$trigger[plot_df$system_min < weber_triggers[6,2] * 0.25] <- "Extreme"
-plot_df$trigger[plot_df$system_min < weber_triggers[6,2] * 0.5 & plot_df$trigger == "None"] <- "Severe"
-plot_df$trigger[plot_df$system_min < weber_triggers[6,2] * 0.7 & plot_df$trigger == "None"] <- "Moderate"
+plot_df$trigger[plot_df$system_min < weber_triggers[8,2] * 0.25] <- "Extreme"
+plot_df$trigger[plot_df$system_min < weber_triggers[8,2] * 0.5 & plot_df$trigger == "None"] <- "Severe"
+plot_df$trigger[plot_df$system_min < weber_triggers[8,2] * 0.7 & plot_df$trigger == "None"] <- "Moderate"
 
 
 
@@ -1075,14 +827,57 @@ p <- p + theme(legend.position = c(0.85, 0.75))
 p <- p + coord_cartesian(xlim = c(0.35,6.5), ylim = c(0,47), expand = TRUE)
 p
 
-
-
 ### Save figures
 ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_trigger.png"),  p, width=6.5, height=5, dpi=300)
 ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_trigger.pdf"),  p, width=6.5, height=5)
 ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_trigger.svg"),  p, width=6.5, height=5)
 
+p <- p + scale_colour_manual(name="Storage Trigger", values= c("grey80", "#ffeda0", "#feb24c", "#f03b20"), limits= c("None", "Moderate", "Severe", "Extreme"), guide = guide_legend())
 
+### Save figures
+ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_trigger_reds.png"),  p, width=6.5, height=5, dpi=300)
+ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_trigger_reds.pdf"),  p, width=6.5, height=5)
+ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_trigger_reds.svg"),  p, width=6.5, height=5)
+
+
+
+
+###########################################################################
+###  DFA
+###########################################################################
+require(MASS)
+
+#### Actually, I should be doing each year, but I don't have time
+
+head(plot_df)
+plot_df$trigger <- factor(plot_df$trigger, c("None", "Moderate", "Severe", "Extreme"))
+
+### Number of samples
+n_samples <- dim(plot_df)[1]
+n_train <- round(n_samples*0.9)
+
+### Random sample (10-fold, 90% for training, 10% for testing)
+train <- sample(1:n_samples, n_train)
+table(plot_df$trigger[train])
+
+### Priors based on trigger values * mean
+priors <- c(0,0.5*0.7 - 0.5*0.5,0.5*0.5 - 0.5*0.25,0.5*0.25)
+priors[1] <- 1- sum(priors[2:4])
+priors
+
+### Linear Discriminant Function Analysis
+#z <- lda(trigger ~ ., plot_df, prior = priors, subset = train)
+z <- lda(trigger ~ min_perc, plot_df, prior = priors, subset = train)
+
+(z1 <- update(z, . ~ . + dura_months))
+
+### Check results
+predict(z, plot_df[-train, ])$class
+plot_df[-train, ]$trigger
+table(predict(z, plot_df[-train, ])$class, plot_df[-train, ]$trigger)
+##  [1] s s s s s s s s s s s s s s s s s s s s s s s s s s s c c c
+## [31] c c c c c c c v c c c c v c c c c c c c c c c c c v v v v v
+## [61] v v v v v v v v v v v v v v v
 
 
 ###########################################################################
@@ -1249,43 +1044,23 @@ write.csv(chi_p , file.path(write_output_base_path,"trigger_chi_p.csv") )
 
 
 
-###########################################################################
-###  DFA
-###########################################################################
-require(MASS)
-
-#### Actually, I should be doing each year, but I don't have time
-
-head(plot_df)
-plot_df$trigger <- factor(plot_df$trigger, c("None", "Moderate", "Severe", "Extreme"))
-
-### Number of samples
-n_samples <- dim(plot_df)[1]
-n_train <- round(n_samples*0.9)
-
-### Random sample (10-fold, 90% for training, 10% for testing)
-train <- sample(1:n_samples, n_train)
-table(plot_df$trigger[train])
-
-### Priors based on trigger values * mean
-priors <- c(0,0.5*0.7 - 0.5*0.5,0.5*0.5 - 0.5*0.25,0.5*0.25)
-priors[1] <- 1- sum(priors[2:4])
-priors
-
-### Linear Discriminant Function Analysis
-#z <- lda(trigger ~ ., plot_df, prior = priors, subset = train)
-z <- lda(trigger ~ min_perc, plot_df, prior = priors, subset = train)
-
-(z1 <- update(z, . ~ . + dura_months))
 
 
-### Check results
-predict(z, plot_df[-train, ])$class
-plot_df[-train, ]$trigger
-table(predict(z, plot_df[-train, ])$class, plot_df[-train, ]$trigger)
-##  [1] s s s s s s s s s s s s s s s s s s s s s s s s s s s c c c
-## [31] c c c c c c c v c c c c v c c c c c c c c c c c c v v v v v
-## [61] v v v v v v v v v v v v v v v
+
+
+
+
+"green", "yellow", "red"
+"#4daf4a", "#ffff33", "#e41a1c"
+
+"#000004FF" "#330A5FFF" "#781C6DFF" "#BB3754FF" "#ED6925FF" "#FCB519FF"
+[7] "#FCFFA4FF"
+
+"100-01-01", "1903-12-01"
+viridis(6, option="inferno")
+
+p + scale_fill_viridis(option="inferno", discrete=TRUE)
+
 
 
 

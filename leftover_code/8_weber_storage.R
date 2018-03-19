@@ -203,6 +203,7 @@ stor_percent$total_res <- stor_percent$total_res / sum(total_storage$Total, na.r
 
 head(stor_percent)
 
+
 ###########################################################################
 ###  Calculate Triggers
 ###########################################################################
@@ -210,13 +211,13 @@ weber_triggers$moderate <- weber_triggers[,2] * 0.7
 weber_triggers$severe <- weber_triggers[,2] * 0.5
 weber_triggers$extreme <- weber_triggers[,2] * 0.25
 
-### Estimate annual trigger for plots based on June storage
+### Estimate annual trigger for plots based on May storage
 #mod_annual <- mean(weber_triggers$moderate)
 #sev_annual <- mean(weber_triggers$severe)
 #ext_annual <- mean(weber_triggers$extreme)
-mod_annual <- weber_triggers$moderate[6]
-sev_annual <- weber_triggers$severe[6]
-ext_annual <- weber_triggers$extreme[6]
+mod_annual <- weber_triggers$moderate[5]
+sev_annual <- weber_triggers$severe[5]
+ext_annual <- weber_triggers$extreme[5]
 
 ### Calculate trigger percents based on storage
 total_system_stor <- sum(total_storage$Total, na.rm=TRUE)
@@ -225,9 +226,11 @@ weber_triggers$sev_perc <- weber_triggers$severe/total_system_stor
 weber_triggers$ext_perc <- weber_triggers$extreme/total_system_stor
 
 ### Estimate annual trigger for plots based on May storage
-mod_perc_annual <- weber_triggers$mod_perc[6]
-sev_perc_annual <- weber_triggers$sev_perc[6]
-ext_perc_annual <- weber_triggers$ext_perc[6]
+mod_perc_annual <- weber_triggers$mod_perc[5]
+sev_perc_annual <- weber_triggers$sev_perc[5]
+ext_perc_annual <- weber_triggers$ext_perc[5]
+
+
 
 ###########################################################################
 ###  Calculate Regions
@@ -258,6 +261,7 @@ lower <- paste0("res_",seq(8,10))
 stor_all$upper_ogden <- apply(stor_all[,seq(2,6)],1,sum, na.rm=TRUE)
 stor_all$upper_weber <- apply(stor_all[,seq(7,8)],1,sum, na.rm=TRUE)
 stor_all$lower <- apply(stor_all[,seq(9,11)],1,sum, na.rm=TRUE)
+#stor_all$system <- stor_all$upper_ogden + stor_all$upper_weber + stor_all$lower
 
 max_stor <- max(stor_all$total_res, na.rm=TRUE)
 stor_all$system_def <- max_stor - stor_all$total_res
@@ -267,7 +271,6 @@ stor_all$system_def <- max_stor - stor_all$total_res
 stor_percent$upper_ogden <- stor_all$upper_ogden / sum(total_storage$Total[seq(1,5)], na.rm=TRUE)
 stor_percent$upper_weber <- stor_all$upper_weber / sum(total_storage$Total[seq(6,7)], na.rm=TRUE)
 stor_percent$lower <- stor_all$lower  / sum(total_storage$Total[seq(8,10)], na.rm=TRUE)
-
 
 
 ###########################################################################
@@ -293,9 +296,9 @@ severe_trigger <- trigger_df$trigger * 0.5
 extreme_trigger <- trigger_df$trigger * 0.25
 
 
-stor_all$moderate <- moderate_trigger - stor_all$total_res
-stor_all$severe <- severe_trigger - stor_all$total_res
-stor_all$extreme <- extreme_trigger - stor_all$total_res
+stor_all$moderate <- moderate_trigger - stor_all$system
+stor_all$severe <- severe_trigger - stor_all$system
+stor_all$extreme <- extreme_trigger - stor_all$system
 
 ### Clear all negative deficits (above threshold) 
 stor_all$moderate[stor_all$moderate < 0] <- 0
@@ -464,7 +467,6 @@ ggsave(file.path(write_output_base_path,"paleo_future_stor_area_acft_hd_1900.pdf
 ggsave(file.path(write_output_base_path,"paleo_future_stor_area_acft_hd_1900.svg"),  p, width=8, height=3.5)
 
 
-
 ###########################################################################
 ## Plot Storage percent Time Series
 ###########################################################################
@@ -475,10 +477,6 @@ perc_plot$date <- perc_plot$base_date
 perc_temp <- stor_percent[stor_all$data %in% c("paleo", "observed", "hd"),]
 perc_test <- perc_temp$date < min(perc_plot$date) | perc_temp$date > max(perc_plot$date)
 perc_plot <- rbind(perc_temp[perc_test, ], perc_plot)
-
-### Previously just this
-# perc_plot <- stor_percent[stor_all$data %in% c("paleo", "observed", "hd"),]
-
 
 ### Create dataframe for triggers
 trigger_plot <- data.frame(date = rep(c(min(perc_plot$date), max(perc_plot$date)), 3))
@@ -492,8 +490,9 @@ trigger_plot$wy <- usgs_wateryear(year=trigger_plot$year, month=trigger_plot$mon
 trigger_plot$trigger_level <- rep(c("Moderate", "Severe", "Extreme"), each=2)
 trigger_plot$trigger_level <- factor(trigger_plot$trigger_level, levels=c("Moderate", "Severe", "Extreme"))
 trigger_plot$res_perc <- rep(c(mod_perc_annual-sev_perc_annual, sev_perc_annual-ext_perc_annual, ext_perc_annual), each=2)
-### This line wasn't previously in here
 trigger_plot$res_stor <- rep(c(mod_annual, sev_annual, ext_annual), each=2)
+
+
 
 ### To plot
 p <- ggplot(perc_plot, aes(x=date, y=total_res))
@@ -524,7 +523,6 @@ p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("21
 ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_1900.png"),  p, width=8, height=3.5, dpi=300)
 ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_1900.pdf"),  p, width=8, height=3.5)
 ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_1900.svg"),  p, width=8, height=3.5)
-
 
 
 
@@ -566,8 +564,6 @@ ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_1900_upp
 p <- ggplot(perc_plot, aes(x=date, y=upper_weber))
 p <- p + geom_area(data=trigger_plot, aes(y=res_perc, fill=trigger_level))
 p <- p + geom_line(aes(group=data), size=0.12)
-### This line previously looked like this:
-# p <- p + geom_line(aes(y=res_1, group=data))
 #p <- p + geom_line(data=trigger_plot, aes(y=mod_perc_annual), col="red")
 #p <- p + geom_line(data=trigger_plot, aes(y=ext_perc_annual), col="green")
 #p <- p + geom_line(data=trigger_plot, aes(y=sev_perc_annual), col="blue")
@@ -593,7 +589,6 @@ p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("21
 ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_1900_upper_weber.png"),  p, width=8, height=3.5, dpi=300)
 ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_1900_upper_weber.pdf"),  p, width=8, height=3.5)
 ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_1900_upper_weber.svg"),  p, width=8, height=3.5)
-
 
 
 ### To plot
@@ -699,31 +694,6 @@ p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("21
 ggsave(file.path(write_output_base_path,"paleo_future_stor_byregion_acft_hd_1900.png"),  p, width=8, height=3.5, dpi=300)
 ggsave(file.path(write_output_base_path,"paleo_future_stor_byregion_acft_hd_1900.pdf"),  p, width=8, height=3.5)
 ggsave(file.path(write_output_base_path,"paleo_future_stor_byregion_acft_hd_1900.svg"),  p, width=8, height=3.5)
-
-
-
-### THere were differences in this figure, here's how it used to look
-
-#area_region <- area_df[, names(area_df) %in% c("date", "data", "upper_ogden", "upper_weber", "lower")]
-#area_region <- melt(area_region, id.vars=c("date", "data"))#, measure.vars=c("upper_ogden", "upper_weber", "lower"))
-#area_region$data <- factor(area_region$data)
-#area_region$variable <- factor(area_region$variable)
-
-#p <- ggplot(subset(area_region, data=="observed"), aes(x=date, y=value/1000, fill=variable))
-#p <- ggplot(yup, aes(x=date, y=value/1000, fill=variable))
-#p <- p + geom_area()
-#p <- p + geom_area(data=subset(area_region, data=="paleo"))
-#p <- p + geom_area(data=subset(area_region, data=="hd"))
-#p <- p + theme_classic_new()
-#p <- p + scale_fill_manual(name="Scenario", values= c("grey30", "grey30", cc_colors), labels=c("Observed", "Base", "HD", "HW", "WD", "WW", "Reconst" ))
-#p <- p + scale_fill_manual(name="Region", values= res_colors, labels=c("Upper Ogden", "Upper Weber", "Lower Weber"), guide = guide_legend())
-#p <- p + coord_cartesian(xlim=c(as.Date("1425-01-01"), as.Date("2070-01-01")), expand=FALSE)
-#p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="50 years"), date_labels = "%Y")
-#p <- p + scale_y_continuous(name="System Storage (1,000 ac-ft)", breaks=seq(0,800,100))
-#p <- p + theme(legend.position="bottom")
-#p
-
-
 
 
 
@@ -929,7 +899,7 @@ for (i in seq(1, dim(drought_event_summary)[1])){
 	drought_event_summary$upper_ogden_min[i] <- min(stor_i$upper_ogden, na.rm=TRUE)
 	drought_event_summary$upper_weber_min[i] <- min(stor_i$upper_weber, na.rm=TRUE)
 	drought_event_summary$lower_min[i] <- min(stor_i$lower, na.rm=TRUE)
-	drought_event_summary$system_min[i] <- min(stor_i$total_res, na.rm=TRUE)
+	drought_event_summary$system_min[i] <- min(stor_i$system, na.rm=TRUE)
 	}
 }
 
@@ -1056,9 +1026,9 @@ magma### no
 plot_triggers <- merge(plot_df, weber_triggers, by.x="month", by.y="Month")
 
 plot_df$trigger <- "None"
-plot_df$trigger[plot_df$system_min < weber_triggers[6,2] * 0.25] <- "Extreme"
-plot_df$trigger[plot_df$system_min < weber_triggers[6,2] * 0.5 & plot_df$trigger == "None"] <- "Severe"
-plot_df$trigger[plot_df$system_min < weber_triggers[6,2] * 0.7 & plot_df$trigger == "None"] <- "Moderate"
+plot_df$trigger[plot_df$system_min < weber_triggers[8,2] * 0.25] <- "Extreme"
+plot_df$trigger[plot_df$system_min < weber_triggers[8,2] * 0.5 & plot_df$trigger == "None"] <- "Severe"
+plot_df$trigger[plot_df$system_min < weber_triggers[8,2] * 0.7 & plot_df$trigger == "None"] <- "Moderate"
 
 
 
@@ -1249,43 +1219,23 @@ write.csv(chi_p , file.path(write_output_base_path,"trigger_chi_p.csv") )
 
 
 
-###########################################################################
-###  DFA
-###########################################################################
-require(MASS)
-
-#### Actually, I should be doing each year, but I don't have time
-
-head(plot_df)
-plot_df$trigger <- factor(plot_df$trigger, c("None", "Moderate", "Severe", "Extreme"))
-
-### Number of samples
-n_samples <- dim(plot_df)[1]
-n_train <- round(n_samples*0.9)
-
-### Random sample (10-fold, 90% for training, 10% for testing)
-train <- sample(1:n_samples, n_train)
-table(plot_df$trigger[train])
-
-### Priors based on trigger values * mean
-priors <- c(0,0.5*0.7 - 0.5*0.5,0.5*0.5 - 0.5*0.25,0.5*0.25)
-priors[1] <- 1- sum(priors[2:4])
-priors
-
-### Linear Discriminant Function Analysis
-#z <- lda(trigger ~ ., plot_df, prior = priors, subset = train)
-z <- lda(trigger ~ min_perc, plot_df, prior = priors, subset = train)
-
-(z1 <- update(z, . ~ . + dura_months))
 
 
-### Check results
-predict(z, plot_df[-train, ])$class
-plot_df[-train, ]$trigger
-table(predict(z, plot_df[-train, ])$class, plot_df[-train, ]$trigger)
-##  [1] s s s s s s s s s s s s s s s s s s s s s s s s s s s c c c
-## [31] c c c c c c c v c c c c v c c c c c c c c c c c c v v v v v
-## [61] v v v v v v v v v v v v v v v
+
+
+
+
+"green", "yellow", "red"
+"#4daf4a", "#ffff33", "#e41a1c"
+
+"#000004FF" "#330A5FFF" "#781C6DFF" "#BB3754FF" "#ED6925FF" "#FCB519FF"
+[7] "#FCFFA4FF"
+
+"100-01-01", "1903-12-01"
+viridis(6, option="inferno")
+
+p + scale_fill_viridis(option="inferno", discrete=TRUE)
+
 
 
 
