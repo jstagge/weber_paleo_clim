@@ -93,11 +93,11 @@ res_colors <- cb_pal(pal="wong", 3, sort=FALSE)
 
 ### Conversion from m3/s to acft/month
 m3s_to_acftmonth <- 2131.97
-
 m3s_to_m3month <- 2629746
-
 m3_to_acft <- 1233.4818
 
+### List of drought responses
+drought_response_list <- c("Base", "ChalkCreekRes", "DemandManagement", "GravelPitRes")
 
 ###########################################################################
 ###  Read in Data
@@ -110,9 +110,22 @@ total_storage <- read.csv(file = read_location)
 weber_triggers <- file.path(weber_stor_path, "mean_weber_stor_levels.csv")
 weber_triggers <- read.csv(file = weber_triggers)
 
+###########################################################################
+###  Read in Base Drought Response
+###########################################################################
+for (i in seq(1, length(drought_response_list))){
+### Name of response scenario
+response <- drought_response_list[i]
+
+### Folder for response scenario
+if (response == "Base"){
+	response_folder <- response
+} else {
+	response_folder <- paste0("DroughtResponse/", response)
+}
 
 ### Read in climate change
-read_location <- file.path(weber_stor_path, "CMIP5/Base/CMIP5WeberOutput-Base_hist.csv")
+read_location <- file.path(weber_stor_path, paste0("CMIP5/",response_folder,"/CMIP5WeberOutput-",response,"_hist.csv"))
 stor_base <- read.csv(file = read_location)
 ### Cut to only reservoirs and save reservoir names
 stor_base <- stor_base[,seq(1,11)]
@@ -122,11 +135,12 @@ stor_base[,1] <- as.Date(stor_base[,1], format="%m/%d/%Y")
 ### Rename columns
 names(stor_base) <- c("date", paste0("res_",seq(1,10)))
 stor_base$data <- "base"
+stor_base$response <- response
 stor_cc <- stor_base
 
 for (name in c("hd", "hw", "wd", "ww")) {
 ### Read in climate change
-read_location <- file.path(weber_stor_path, paste0("CMIP5/Base/CMIP5WeberOutput-Base_",name,".csv"))
+read_location <- file.path(weber_stor_path, paste0("CMIP5/",response_folder,"/CMIP5WeberOutput-",response,"_",name,".csv"))
 stor_temp <- read.csv(file = read_location)
 ### Cut to only reservoirs and save reservoir names
 stor_temp <- stor_temp[,seq(1,11)]
@@ -135,17 +149,16 @@ stor_temp[,1] <- as.Date(stor_temp[,1], format="%m/%d/%Y")
 ### Rename columns
 names(stor_temp) <- c("date", paste0("res_",seq(1,10)))
 stor_temp$data <- name
+stor_temp$response <- response
 stor_cc <- rbind(stor_cc, stor_temp)
 }
-
 
 #### Shift climate change forward in time (55 years)
 stor_cc$base_date <- stor_cc$date
 stor_cc$date <- stor_cc$date %m+% years(55)
 
-
 ### Read in paleo flow
-read_location <- file.path(weber_stor_path, "Paleo/Base/PaleoWeberOutput-Base.csv")
+read_location <- file.path(weber_stor_path, paste0("Paleo/",response_folder,"/PaleoWeberOutput-",response,".csv"))
 stor_paleo <- read.csv(file = read_location)
 ### Cut to only reservoirs
 stor_paleo <- stor_paleo[,seq(2,12)]
@@ -157,7 +170,24 @@ stor_paleo$data <- "paleo"
 ### Observed starts in 1904
 stor_paleo$data[year(stor_paleo$date) >= 1904] <- "observed"
 
+stor_paleo$response <- response
 
+### Combine data
+if (i == 1) {
+stor_base_all <- stor_base
+stor_cc_all <- stor_cc
+stor_paleo_all <- stor_paleo
+} else {
+stor_base_all <- rbind(stor_base_all, stor_base)
+stor_cc_all <- rbind(stor_cc_all, stor_cc)
+stor_paleo_all <- rbind(stor_paleo_all, stor_paleo)
+}
+
+}
+
+stor_base <- stor_base_all
+stor_cc <- stor_cc_all 
+stor_paleo <- stor_paleo_all
 
 
 ###########################################################################
