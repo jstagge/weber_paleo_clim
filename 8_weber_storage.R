@@ -69,6 +69,7 @@ require(staggefuncs)
 require(lubridate)
 require(reshape2)
 require(scales)
+require(tidyverse)
 
 ###########################################################################
 ## Set Initial Values
@@ -96,8 +97,9 @@ m3s_to_acftmonth <- 2131.97
 m3s_to_m3month <- 2629746
 m3_to_acft <- 1233.4818
 
-### List of drought responses
+### List of drought responses and data sources
 drought_response_list <- c("Base", "ChalkCreekRes", "DemandManagement", "GravelPitRes")
+data_list <- c("paleo", "base", "ww", "hw", "wd", "hd")
 
 ###########################################################################
 ###  Read in Data
@@ -109,85 +111,8 @@ total_storage <- read.csv(file = read_location)
 ### Read in reservoir storage trigger points
 weber_triggers <- file.path(weber_stor_path, "mean_weber_stor_levels.csv")
 weber_triggers <- read.csv(file = weber_triggers)
-
-###########################################################################
-###  Read in Base Drought Response
-###########################################################################
-for (i in seq(1, length(drought_response_list))){
-### Name of response scenario
-response <- drought_response_list[i]
-
-### Folder for response scenario
-if (response == "Base"){
-	response_folder <- response
-} else {
-	response_folder <- paste0("DroughtResponse/", response)
-}
-
-### Read in climate change
-read_location <- file.path(weber_stor_path, paste0("CMIP5/",response_folder,"/CMIP5WeberOutput-",response,"_hist.csv"))
-stor_base <- read.csv(file = read_location)
-### Cut to only reservoirs and save reservoir names
-stor_base <- stor_base[,seq(1,11)]
-res_names <- names(stor_base)[2:11]
-### Process date
-stor_base[,1] <- as.Date(stor_base[,1], format="%m/%d/%Y")
-### Rename columns
-names(stor_base) <- c("date", paste0("res_",seq(1,10)))
-stor_base$data <- "base"
-stor_base$response <- response
-stor_cc <- stor_base
-
-for (name in c("hd", "hw", "wd", "ww")) {
-### Read in climate change
-read_location <- file.path(weber_stor_path, paste0("CMIP5/",response_folder,"/CMIP5WeberOutput-",response,"_",name,".csv"))
-stor_temp <- read.csv(file = read_location)
-### Cut to only reservoirs and save reservoir names
-stor_temp <- stor_temp[,seq(1,11)]
-### Process date
-stor_temp[,1] <- as.Date(stor_temp[,1], format="%m/%d/%Y")
-### Rename columns
-names(stor_temp) <- c("date", paste0("res_",seq(1,10)))
-stor_temp$data <- name
-stor_temp$response <- response
-stor_cc <- rbind(stor_cc, stor_temp)
-}
-
-#### Shift climate change forward in time (55 years)
-stor_cc$base_date <- stor_cc$date
-stor_cc$date <- stor_cc$date %m+% years(55)
-
-### Read in paleo flow
-read_location <- file.path(weber_stor_path, paste0("Paleo/",response_folder,"/PaleoWeberOutput-",response,".csv"))
-stor_paleo <- read.csv(file = read_location)
-### Cut to only reservoirs
-stor_paleo <- stor_paleo[,seq(2,12)]
-### Process date
-stor_paleo[,1] <- as.Date(paste0(substr(stor_paleo[,1],4,9), "-", substr(stor_paleo[,1],1,2), "-01"))
-### Rename columns
-names(stor_paleo) <- c("date", paste0("res_",seq(1,10)))
-stor_paleo$data <- "paleo"
-### Observed starts in 1904
-stor_paleo$data[year(stor_paleo$date) >= 1904] <- "observed"
-
-stor_paleo$response <- response
-
-### Combine data
-if (i == 1) {
-stor_base_all <- stor_base
-stor_cc_all <- stor_cc
-stor_paleo_all <- stor_paleo
-} else {
-stor_base_all <- rbind(stor_base_all, stor_base)
-stor_cc_all <- rbind(stor_cc_all, stor_cc)
-stor_paleo_all <- rbind(stor_paleo_all, stor_paleo)
-}
-
-}
-
-stor_base <- stor_base_all
-stor_cc <- stor_cc_all 
-stor_paleo <- stor_paleo_all
+### Convert weber_triggers month column into factor
+weber_triggers$Month <- factor(weber_triggers$Month, levels=c(seq(10,12), seq(1,9)))
 
 
 ###########################################################################
@@ -198,14 +123,89 @@ read_location <- file.path(write_output_base_path, paste0(site_id,"_drought_deta
 drought_event_summary <- read.csv(file = read_location)
 
 
+
+###########################################################################
+###  Prepare all scenarios for read in
+###########################################################################
+scenario_df <- expand.grid(response=drought_response_list, data=data_list)
+
+### Create a column for base folders
+scenario_df <- scenario_df %>%
+       mutate(base_folder = case_when(
+           data == "paleo" ~ "Paleo",
+           TRUE ~ "CMIP5") )
+
+### Create a column for response folder
+scenario_df <- scenario_df %>%
+		mutate(response_folder = case_when(
+  			response == "Base"  ~ file.path(weber_stor_path, paste0(base_folder,"/",response)),
+  			TRUE ~ file.path(weber_stor_path, paste0(base_folder,"/DroughtResponse/",response)))
+  		)
+  		
+### Create a column for file location
+scenario_df <- scenario_df %>%
+		mutate(read_location = case_when(
+  			data == "paleo"  ~ file.path(response_folder, paste0(base_folder,"WeberOutput-",response,".csv")),
+  			data == "base" ~ file.path(response_folder, paste0(base_folder,"WeberOutput-",response,"_hist.csv")),
+  			TRUE ~ file.path(response_folder, paste0(base_folder,"WeberOutput-",response,"_",data,".csv")))
+  		)
+		
+
+###########################################################################
+###  Read in Loop
+###########################################################################
+
+### Loop through all scenarios to read in data
+for (i in seq(1,dim(scenario_df)[1])){
+	### Read in data
+	stor_temp <- read.csv(file = scenario_df$read_location[i])
+
+	### Cut to only reservoirs and save reservoir names
+	stor_res <- stor_temp %>% select(dplyr::contains("RES"))
+	res_names <- names(stor_res)
+	
+	### Create date column
+	if (scenario_df$data[i]=="paleo"){
+		date_vec <- stor_temp$Actual.Date
+		date_vec <- as.Date(paste0(substr(date_vec,4,9), "-", substr(date_vec,1,2), "-01"))
+	} else {
+		date_vec <- stor_temp$X
+		date_vec <- as.Date(date_vec, format="%m/%d/%Y")
+	}
+	
+	### Combine date with reservoirs and rename columns
+	stor_temp <- data.frame(date=date_vec, stor_res)
+	names(stor_temp) <- c("date", paste0("res_",seq(1,10)))
+	
+	### Add data and response columns
+	stor_temp$data <- scenario_df$data[i]
+	stor_temp$response <- scenario_df$response[i]
+	
+	### Add column to shift climate change forward in time
+	stor_temp$base_date <- stor_temp$date
+	if (scenario_df$data[i] != "paleo" & scenario_df$data[i] != "base"){
+		stor_temp$date <- stor_temp$date %m+% years(55)
+	}
+
+	### Combine data
+	if (i == 1){
+		stor_all <- stor_temp
+	} else {
+		stor_all <- rbind(stor_all, stor_temp)
+	}
+	
+}
+
+
 ###########################################################################
 ###  Prepare data
 ###########################################################################
-### Combine all data
-stor_paleo$base_date <- stor_paleo$date
-stor_all <- rbind(stor_paleo, stor_cc)
-stor_all$data <- as.factor(stor_all$data)
+### Define order for data and response factors
+stor_all$data <- factor(stor_all$data, levels= c("paleo", "observed", "base", "ww", "hw", "wd", "hd"))
 data_levels <- levels(stor_all$data)
+
+stor_all$response <- factor(stor_all$response, levels= drought_response_list)
+response_levels <- levels(stor_all$response)
 
 ### Cut to records with dates and save month/year
 stor_all <- stor_all[!is.na(stor_all$date),]
@@ -216,9 +216,22 @@ stor_all$wy <- usgs_wateryear(year=stor_all$year, month=stor_all$month)
 ### Make months a factor
 stor_all$month <- factor(stor_all$month, levels=c(seq(10, 12), seq(1,9)))
 
-### Sum all reservoirs
-stor_all$total_res <- apply(stor_all[,2:11],1,sum, na.rm=TRUE)
+### Assume Paleo after 1904 is "Observed"
+stor_all$data[stor_all$year >= 1904 & stor_all$data=="paleo"] <- "observed"
 
+###########################################################################
+###  Calculate System Total storage
+###########################################################################
+### Sum all reservoirs
+stor_all$total_res <- stor_all %>%
+	select(dplyr::contains("res_")) %>% 
+    apply(., 1, sum, na.rm=TRUE )
+    
+### Sum all current reservoirs (exclude Res 9 and 10)
+stor_all$current_res <- stor_all %>%
+	select(paste0("res_", seq(1,8))) %>% 
+    apply(., 1, sum, na.rm=TRUE )   
+ 
 ###########################################################################
 ###  Calculate Percent Storage
 ###########################################################################
@@ -230,6 +243,7 @@ stor_percent[,res_test] <- sweep(stor_percent[,res_test], 2, c(total_storage$Tot
 
 ### Divide for total system storage
 stor_percent$total_res <- stor_percent$total_res / sum(total_storage$Total, na.rm=TRUE)
+stor_percent$current_res <- stor_percent$current_res / sum(total_storage$Total, na.rm=TRUE)
 
 head(stor_percent)
 
@@ -241,9 +255,7 @@ weber_triggers$severe <- weber_triggers[,2] * 0.5
 weber_triggers$extreme <- weber_triggers[,2] * 0.25
 
 ### Estimate annual trigger for plots based on June storage
-#mod_annual <- mean(weber_triggers$moderate)
-#sev_annual <- mean(weber_triggers$severe)
-#ext_annual <- mean(weber_triggers$extreme)
+### Used only for plotting
 mod_annual <- weber_triggers$moderate[6]
 sev_annual <- weber_triggers$severe[6]
 ext_annual <- weber_triggers$extreme[6]
@@ -262,15 +274,14 @@ ext_perc_annual <- weber_triggers$ext_perc[6]
 ###########################################################################
 ###  Calculate Regions
 ###########################################################################
-
-#Upper - Ogden
+#Upper - Weber
 # "RES1.Smith.And.Morehouse.Storage"  
 # "RES2.Rockport.Storage" 
 #  "RES3.Echo.Storage"
 # "RES4.Lost.Creek.Storage"   
 # "RES5.East.Canyon.Storage"   second row
 
-#Upper - Weber
+#Upper - Ogden
 # "RES6.Causey.Storage"  first row
 #  "RES7.Pineview.Storage"  
 
@@ -280,18 +291,26 @@ ext_perc_annual <- weber_triggers$ext_perc[6]
 #"RES10.Chalk.Creek.Storage" 
 
 #Page 14 of drought contingency plan for active storage
-upper_ogden <- paste0("res_",seq(1,5)) 
-upper_weber <- paste0("res_",seq(6,7)) 
+upper_weber <- paste0("res_",seq(1,5)) 
+upper_ogden <- paste0("res_",seq(6,7)) 
 lower <- paste0("res_",seq(8,10)) 
 
 ### Calculate storage by region
-stor_all$upper_ogden <- apply(stor_all[,seq(2,6)],1,sum, na.rm=TRUE)
-stor_all$upper_weber <- apply(stor_all[,seq(7,8)],1,sum, na.rm=TRUE)
-stor_all$lower <- apply(stor_all[,seq(9,11)],1,sum, na.rm=TRUE)
+stor_all$upper_weber <- stor_all %>%
+	select(upper_weber) %>% 
+    apply(., 1, sum, na.rm=TRUE ) 
+    
+stor_all$upper_ogden <- stor_all %>%
+	select(upper_ogden) %>% 
+    apply(., 1, sum, na.rm=TRUE )   
+    
+stor_all$lower <- stor_all %>%
+	select(lower) %>% 
+    apply(., 1, sum, na.rm=TRUE ) 
 
-max_stor <- max(stor_all$total_res, na.rm=TRUE)
-stor_all$system_def <- max_stor - stor_all$total_res
-
+### I don't think we need this anymore
+#max_stor <- max(stor_all$total_res, na.rm=TRUE)
+#stor_all$system_def <- max_stor - stor_all$total_res
 
 ### Calculate storage percent by region
 stor_percent$upper_ogden <- stor_all$upper_ogden / sum(total_storage$Total[seq(1,5)], na.rm=TRUE)
@@ -299,14 +318,15 @@ stor_percent$upper_weber <- stor_all$upper_weber / sum(total_storage$Total[seq(6
 stor_percent$lower <- stor_all$lower  / sum(total_storage$Total[seq(8,10)], na.rm=TRUE)
 
 
-
 ###########################################################################
 ###  Create trigger column and calculate volume below trigger
 ###########################################################################
-trigger_df <- data.frame(row_index=as.numeric(row.names(stor_all)),  month=stor_all$month)
+### Create an ID column
+trigger_df <- data.frame(row_index=seq_len(nrow(stor_all)),  month=stor_all$month)
 
 ### Merge with original data
-trigger_df <- merge(trigger_df, weber_triggers, by.x="month", by.y="Month")
+trigger_df <- left_join(trigger_df, weber_triggers, by = c("month" = "Month"))
+
 ### Sort and rename
 trigger_df <- trigger_df[ with(trigger_df, order(row_index)),]
 names(trigger_df)[3] <- "trigger"
@@ -322,7 +342,7 @@ moderate_trigger <- trigger_df$trigger * 0.7
 severe_trigger <- trigger_df$trigger * 0.5
 extreme_trigger <- trigger_df$trigger * 0.25
 
-
+### Calculate deficits 
 stor_all$moderate <- moderate_trigger - stor_all$total_res
 stor_all$severe <- severe_trigger - stor_all$total_res
 stor_all$extreme <- extreme_trigger - stor_all$total_res
@@ -332,11 +352,9 @@ stor_all$moderate[stor_all$moderate < 0] <- 0
 stor_all$severe[stor_all$severe < 0] <- 0
 stor_all$extreme[stor_all$extreme < 0] <- 0
 
-### Clear all negative deficits (above threshold) 
+### Calculate deficit within each area (so they sum properly) 
 stor_all$moderate[stor_all$moderate > (moderate_trigger -severe_trigger)] <- (moderate_trigger - severe_trigger)[stor_all$moderate > (moderate_trigger -severe_trigger)]
 stor_all$severe[stor_all$severe > (severe_trigger - extreme_trigger)] <- (severe_trigger - extreme_trigger)[stor_all$severe > (severe_trigger - extreme_trigger)] 
-
-
 
 ###########################################################################
 ###  Make data descriptors
@@ -363,6 +381,7 @@ stor_percent$precip <- stor_all$precip
 ###########################################################################
 ###  Calculate drought events
 ###########################################################################
+### Come back here and calculate based on dates
 
 drought_event_summary <- subset(drought_event_summary, data!="CTN5")
 

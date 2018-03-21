@@ -64,6 +64,15 @@ dir.create(write_output_base_path)
 load(file.path(weber_output_path, "weber_delivery_output.RData"))
 
 
+
+###########################################################################
+## Set initial values
+###########################################################################
+res_colors <- cb_pal(pal="wong", 3, sort=FALSE)
+
+
+cc_colors <- c("#0072B2", "#56B4E9", "#E69F00" , "#D55E00")
+
 #############################################################
 ###  Quick Check Plots
 #############################################################
@@ -248,6 +257,77 @@ p <- p + scale_y_continuous(name="Delivery (ac-ft)")
 p <- p + theme(legend.position="bottom")
 #p <- p + facet_wrap(~variable, nrow = 4)
 p
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ggplot(subset(hash_full, response=="Base" & data=="paleo"), aes(x=node, y=reliability)) + geom_col(position="identity") + theme_classic() + coord_cartesian(ylim=c(0.75, 1))
+
+
+
+
+
+
+
+
+ggplot(subset(hash_full, response=="Base" & data=="paleo"& short_type=="demand"), aes(x=node, y=reliability)) + geom_col(position="identity") + theme_classic() + coord_cartesian(ylim=c(0.75, 1))
+
+ggplot(subset(hash_full, node %in% c("upper_weber", "upper_ogden", "lower") & data=="paleo"& short_type=="demand"), aes(x=node, y=reliability, fill=response)) + geom_bar(position = "dodge", stat="identity") + theme_classic() + coord_cartesian(ylim=c(0.75, 1))
+
+p <- ggplot(subset(hash_full, node %in% c("upper_weber", "upper_ogden", "lower") & response=="Base"& short_type=="demand"), aes(x=node, y=reliability, fill=data)) + geom_bar(position = "dodge", stat="identity") + theme_classic() + coord_cartesian(ylim=c(0.5, 1))
+p + scale_fill_manual(values=c("#7fc97f", "grey40", "grey80", cc_colors))
+
+
+
+
+p <- ggplot(subset(hash_full, node %in% c("upper_weber", "upper_ogden", "lower") & response=="Base" & short_type=="demand"), aes(x=node, y=vulnerability, fill=data)) + geom_bar(position = "dodge", stat="identity") + theme_classic()
+p + scale_fill_manual(values=c("#7fc97f", "grey40", "grey80", cc_colors))
+
+
+
+p <- ggplot(subset(hash_full, node %in% c("upper_weber", "upper_ogden", "lower") & response=="Base" & short_type=="demand"), aes(x=node, y=resilience, fill=data)) + geom_bar(position = "dodge", stat="identity") + theme_classic()
+p + scale_fill_manual(values=c("#7fc97f", "grey40", "grey80", cc_colors))
+
+
+
+p <- ggplot(subset(hash_full, node %in% c("upper_weber", "upper_ogden", "lower") & response=="Base"), aes(x=node, y=reliability, fill=data)) + geom_bar(position = "dodge", stat="identity") + theme_classic()
+p + scale_fill_manual(values=c("#7fc97f", "grey40", "grey80", cc_colors)) + facet_wrap(~short_type, nrow=2)
+
+
+
+
+p <- ggplot(subset(hash_full, response=="Base"), aes(x=node, y=reliability, fill=data)) + geom_bar(position = "dodge", stat="identity") + theme_classic()
+p + scale_fill_manual(values=c("#7fc97f", "grey40", "grey80", cc_colors)) + facet_wrap(~short_type, nrow=2)
+
+
+
+
+
+
+p <- ggplot(subset(demand_deliv_df, response=="Base"), aes(x=date, y=demand_shortage_perc, group=data)) + facet_wrap(~node) + geom_line() + theme_classic_new()
+p
+
+p + geom_line(data=subset(demand_deliv_df, response=="ChalkCreekRes"), aes(y=demand_shortage_perc), colour="red")
+
+p <- ggplot(subset(demand_deliv_df, response=="Base"), aes(x=date, y=demand_shortage, group=data)) + facet_wrap(~node) + geom_line()
+p + geom_line(data=subset(demand_deliv_df, response=="ChalkCreekRes"), aes(y=demand_shortage), colour="red")
+
+p <- ggplot(subset(demand_deliv_df, response=="Base"), aes(x=date, y=request_shortage_perc, group=data)) + facet_wrap(~node) + geom_line()
+p
+p + geom_line(data=subset(demand_deliv_df, response=="ChalkCreekRes"), aes(y=request_shortage_perc), colour="red")
+
 
 
 
