@@ -378,6 +378,61 @@ stor_percent$temp <- stor_all$temp
 stor_percent$precip <- stor_all$precip 
 
 
+
+###########################################################################
+###  New Approach to  Drought Events
+###########################################################################
+data_and_responses <- expand.grid(data=data_levels, response=response_levels)
+
+data_counter <- 0
+	
+for (i in seq(1,dim(data_and_responses)[1])){
+
+	data_i <- data_and_responses$data[i]
+	response_i <- data_and_responses$response[i]
+	
+	stor_subset <- stor_all %>%
+		filter(data==data_i, response == response_i) %>% 
+		arrange(date)
+	
+	for (j in seq(1, dim(drought_event_summary)[1])){
+		event_j <- drought_event_summary[j,]
+	
+		event_data <- stor_subset %>%
+		filter(date >= as.Date(event_j$begin), date <= as.Date(event_j$end))
+		
+		if (dim(event_data)[1] > 0) {
+			to_min <- event_data %>% select(starts_with("res_"), upper_weber, upper_ogden, lower, total_res, current_res)
+			to_min <- apply(to_min, 2, min, na.rm=TRUE)
+			names(to_min) <- paste0(names(to_min), "_min")
+		
+			to_max <- event_data %>% select(moderate, severe, extreme)
+			to_max <- apply(to_max, 2, max, na.rm=TRUE)
+			names(to_max) <- paste0(names(to_max), "_max")
+		
+			event_j <- cbind(event_j, response=response_i, t(to_min), t(to_max))
+		
+			if (data_counter == 1){
+				drought_event_system <- rbind(drought_event_system, event_j)
+			} else {
+				drought_event_system <- event_j
+				data_counter <- 1
+			}
+		}
+	}
+}
+		
+
+###########################################################################
+## Save Workspace
+###########################################################################
+save.image(file.path(weber_output_path, "weber_storage_output.RData"))
+
+
+
+
+
+  
 ###########################################################################
 ###  Calculate drought events
 ###########################################################################
@@ -422,19 +477,6 @@ for (i in seq(1, dim(drought_event_summary)[1])){
 	drought_event_summary$system_min[i] <- min(stor_i$total_res, na.rm=TRUE)
 	}
 }
-
-
-
-###########################################################################
-## Save Workspace
-###########################################################################
-save.image(file.path(weber_output_path, "weber_storage_output.RData"))
-
-
-
-
-
-
 
 
 
