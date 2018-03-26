@@ -74,41 +74,6 @@ require(tidyverse)
 
 
 ###########################################################################
-###  Hashimoto Vulnerability Function
-###########################################################################
-hash_perform <- function(site, demand,  delivery){
-### Follows Hashimoto, T., Stedinger, J.R., Loucks, D.P., 1982. Reliability, resiliency, and vulnerability criteria for water resource system performance evaluation. Water Resour. Res. 18, 14–20. https://doi.org/10.1029/WR018i001p00014
-### Also used https://agupubs.onlinelibrary.wiley.com/doi/epdf/10.1029/2002WR001778
-demand <- demand[,names(demand) %in% site]
-delivery <- delivery[,names(delivery) %in% site]
-
-shortage <- demand - delivery
-
-sat <- shortage <= 0
-unsat <- shortage > 0
-
-sat_lag <- c(sat[seq(2, length(sat))], NA)
-w_trans <- unsat == TRUE & sat_lag == TRUE
-
-time_length <- sum(!is.na(shortage))
-
-### Reliability
-### Fraction of time that demand is met
-reliability <- sum(sat, na.rm=TRUE)/time_length
-
-### Resilience
-### Average probability of recovery in any given failure time step
-resilience <- sum(w_trans, na.rm=TRUE)/ (time_length - sum(sat, na.rm=TRUE))
-
-### Vulnerability
-### Maximum shortage
-vulnerability <- max(shortage, na.rm=TRUE)
-
-return(list(reliability=reliability, resilience=resilience, vulnerability = vulnerability))
-}
-
-
-###########################################################################
 ## Set Initial Values
 ###########################################################################
 ### Set site data
@@ -463,6 +428,69 @@ for (i in seq(1,dim(all_runs)[1])){
 	}
 }
 
+
+
+###########################################################################
+## Open Output File so I can add demand shortages
+###########################################################################
+#e1 <- new.env() 
+#load(file.path(weber_output_path, "weber_storage_output.RData"), e1) 
+#drought_event_system <- get('drought_event_system', e1) 
+#rm(e1)
+### This does a weird thing where data is wrong
+
+
+###########################################################################
+###  New Approach to  Drought Events
+###########################################################################
+data_and_responses <- expand.grid(data=data_levels, response=response_levels)
+
+data_counter <- 0
+	
+for (i in seq(1,dim(data_and_responses)[1])){
+
+	data_i <- data_and_responses$data[i]
+	response_i <- data_and_responses$response[i]
+	
+	shortage_subset <- demand_deliv_df %>%
+		filter(data==data_i, response == response_i) %>%
+		select(date, data, response, node, demand_shortage) %>%
+		spread(node, demand_shortage) %>% 
+		arrange(date)
+	
+	for (j in seq(1, dim(drought_event_summary)[1])){
+		event_j <- drought_event_summary[j,]
+	
+		event_data <- shortage_subset %>%
+		filter(date >= as.Date(event_j$begin), date <= as.Date(event_j$end))
+		
+		if (dim(event_data)[1] > 0) {
+			#to_min <- event_data %>% select(starts_with("res_"), upper_weber, upper_ogden, lower, total_res, current_res)
+			#to_min <- apply(to_min, 2, min, na.rm=TRUE)
+			#names(to_min) <- paste0(names(to_min), "_min")
+		
+			to_max <- event_data %>% select(starts_with("SA"), upper_weber, upper_ogden, lower, system)
+			to_max <- apply(to_max, 2, max, na.rm=TRUE)
+			names(to_max) <- paste0(names(to_max), "_max")
+		
+			event_j <- cbind(event_j, response=response_i, t(to_max)) #t(to_min),
+		
+			if (data_counter == 1){
+				drought_event_system <- rbind(drought_event_system, event_j)
+			} else {
+				drought_event_system <- event_j
+				data_counter <- 1
+			}
+		}
+	}
+}
+		
+
+ggplot(subset(drought_event_system, response=="Base" & data=="paleo"), aes(x=dura_months, y=min_perc, colour=log10(system_max))) + geom_point() + scale_colour_viridis(option="magma")
+
+
+
+		
 ###########################################################################
 ## Save Workspace
 ###########################################################################
