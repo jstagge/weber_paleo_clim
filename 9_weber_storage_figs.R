@@ -237,7 +237,7 @@ p <- ggplot(line_plot, aes(x=date, y=get(region_i)/1000, colour=data))
 p <- p + geom_line(size=0.18)#, alpha=0.8)
 #p <- p + geom_hline(yintercept=0, size=0.15)
 p <- p + theme_classic_new()
-p <- p + scale_colour_manual(name="Scenario", values= data_colors[c(1, 2, 7)], labels=c( "Reconstructed", "Observed", "Climate Change (HD)"), limits=c("paleo","observed",  "hd"), guide = guide_legend())
+p <- p + scale_colour_manual(name="Scenario", values= data_colors[c(1, 2,3, 7)], labels=c( "Reconstructed", "Observed", "Base", "Climate Change (HD)"), limits=c("paleo","observed", "base", "hd"), guide = guide_legend())
 p <- p + coord_cartesian(xlim=c(as.Date("1425-01-01"), as.Date("2070-01-01")), expand=FALSE) + expand_limits(y=0)
 p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="50 years"), date_labels = "%Y")
 p <- p + scale_y_continuous(name=y_name, breaks=seq(0,800,100))
@@ -263,23 +263,14 @@ ggsave(file.path(plot_location,paste0("stor_timeseries_acft_hd_", region_i, "_",
 }
 }
 
+
+
 ###########################################################################
-## Plot Storage percent Time Series
+## Plot Percent Storage Time Series as Line
 ###########################################################################
-### Create percentile plot dataframe
-perc_plot <- stor_percent[stor_all$data %in% c("base"),]
-perc_plot$date <- perc_plot$base_date
-
-perc_temp <- stor_percent[stor_all$data %in% c("paleo", "observed", "hd"),]
-perc_test <- perc_temp$date < min(perc_plot$date) | perc_temp$date > max(perc_plot$date)
-perc_plot <- rbind(perc_temp[perc_test, ], perc_plot)
-
-### Previously just this
-# perc_plot <- stor_percent[stor_all$data %in% c("paleo", "observed", "hd"),]
-
 ### Create dataframe for triggers
 ### Add a 6 year buffer for plotting
-trigger_plot <- data.frame(date = rep(c(min(perc_plot$date) %m+% years(-6), max(perc_plot$date) %m+% years(6)), 3))
+trigger_plot <- data.frame(date = rep(c(min(stor_percent$date) %m+% years(-6), max(stor_percent$date) %m+% years(6)), 3))
 trigger_plot$month <- month(trigger_plot$date)
 trigger_plot$year <- year(trigger_plot$date)
 
@@ -293,132 +284,60 @@ trigger_plot$res_perc <- rep(c(mod_perc_annual-sev_perc_annual, sev_perc_annual-
 ### This line wasn't previously in here
 trigger_plot$res_stor <- rep(c(mod_annual, sev_annual, ext_annual), each=2)
 
-### To plot
-p <- ggplot(perc_plot, aes(x=date, y=total_res))
+for (response_i in response_levels){
+	response_plot <- stor_percent %>% 
+		filter(response == response_i)
+		
+for (i in seq(1, length(region_levels))) {
+region_i <- as.character(region_levels[i])
+region_plot_name <- region_names[i]
+
+y_name <- paste0(region_plot_name, " Percent Storage ")
+
+### Create percentile plot dataframe
+perc_plot <- response_plot[response_plot$data %in% c("base"),]
+perc_plot$date <- perc_plot$base_date
+
+perc_temp <- response_plot[response_plot$data %in% c("paleo", "observed", "hd"),]
+perc_test <- perc_temp$date < min(perc_plot$date) | perc_temp$date > max(perc_plot$date)
+perc_plot <- rbind(perc_temp[perc_test, ], perc_plot)
+
+p <- ggplot(perc_plot, aes(x=date, y=get(region_i)))
 p <- p + geom_area(data=trigger_plot, aes(y=res_perc, fill=trigger_level))
-p <- p + geom_line(aes(group=data), size=0.12)
+p <- p + geom_line(aes(group=data), size=0.14)
 #p <- p + geom_line(data=trigger_plot, aes(y=mod_perc_annual), col="red")
 #p <- p + geom_line(data=trigger_plot, aes(y=ext_perc_annual), col="green")
 #p <- p + geom_line(data=trigger_plot, aes(y=sev_perc_annual), col="blue")
 p <- p + theme_classic_new()
-p <- p + scale_fill_manual(name="Storage Trigger", values= c("#f03b20",  "#feb24c", "#ffeda0"), limits= c("Extreme", "Severe", "Moderate"), labels=c("Extreme", "Severe", "Moderate"), guide = guide_legend())
+p <- p + scale_fill_manual(name="Storage Trigger", values= trigger_colors, limits= c("Extreme", "Severe", "Moderate"), labels=c("Extreme", "Severe", "Moderate"), guide = guide_legend())
 p <- p + coord_cartesian(xlim=c(as.Date("1428-01-01"), as.Date("2070-01-01")), ylim=c(0,1), expand=FALSE)
 p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="50 years"), date_labels = "%Y")
-p <- p + scale_y_continuous(name="Percent Storage", breaks=seq(0,1,0.1), labels=percent)
+p <- p + scale_y_continuous(name=y_name, breaks=seq(0,1,0.1), labels=percent)
 p <- p + theme(legend.position="bottom")
 p
 
+plot_location <- file.path(storage_output_path,paste0("time_series/", response_i))
+dir.create(plot_location, recursive=TRUE, showWarnings=FALSE)
+
 ### Save figures
-ggsave(file.path(storage_output_path,"paleo_future_stor_line_perc_hd_full.png"),  p, width=8, height=3.5, dpi=300)
-ggsave(file.path(storage_output_path,"paleo_future_stor_line_perc_hd_full.pdf"),  p, width=8, height=3.5)
-ggsave(file.path(storage_output_path,"paleo_future_stor_line_perc_hd_full.svg"),  p, width=8, height=3.5)
+ggsave(file.path(plot_location,paste0("stor_timeseries_percent_hd_", region_i, "_", response_i,".png")),  p, width=8, height=3.5, dpi=300)
+ggsave(file.path(plot_location,paste0("stor_timeseries_percent_hd_", region_i, "_", response_i,".pdf")),  p, width=8, height=3.5)
+ggsave(file.path(plot_location,paste0("stor_timeseries_percent_hd_", region_i, "_", response_i,".svg")),  p, width=8, height=3.5)
 
 ### Cut to 1900s
-p <- p + coord_cartesian(xlim=c(as.Date("1920-01-01"), as.Date("2066-01-01")), ylim=c(0,1), expand=FALSE)
+p <- p + coord_cartesian(xlim=c(as.Date("1920-01-01"), as.Date("2066-01-01")), expand=FALSE) + expand_limits(y=0)
 p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="10 years"), date_labels = "%Y")
 
 ### Save figures
-ggsave(file.path(storage_output_path,"paleo_future_stor_line_perc_hd_1900.png"),  p, width=8, height=3.5, dpi=300)
-ggsave(file.path(storage_output_path,"paleo_future_stor_line_perc_hd_1900.pdf"),  p, width=8, height=3.5)
-ggsave(file.path(storage_output_path,"paleo_future_stor_line_perc_hd_1900.svg"),  p, width=8, height=3.5)
-
-
-### To plot
-p <- ggplot(perc_plot, aes(x=date, y=upper_ogden))
-p <- p + geom_area(data=trigger_plot, aes(y=res_perc, fill=trigger_level))
-p <- p + geom_line(aes(group=data), size=0.12)
-#p <- p + geom_line(data=trigger_plot, aes(y=mod_perc_annual), col="red")
-#p <- p + geom_line(data=trigger_plot, aes(y=ext_perc_annual), col="green")
-#p <- p + geom_line(data=trigger_plot, aes(y=sev_perc_annual), col="blue")
-p <- p + theme_classic_new()
-p <- p + scale_fill_manual(name="Storage Trigger", values= c("#f03b20",  "#feb24c", "#ffeda0"), limits= c("Extreme", "Severe", "Moderate"), labels=c("Extreme", "Severe", "Moderate"), guide = guide_legend())
-p <- p + coord_cartesian(xlim=c(as.Date("1428-01-01"), as.Date("2070-01-01")), ylim=c(0,1), expand=FALSE)
-p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="50 years"), date_labels = "%Y")
-p <- p + scale_y_continuous(name="Percent Storage", breaks=seq(0,1,0.1), labels=percent)
-p <- p + theme(legend.position="bottom")
-p
-
-
-### Save figures
-ggsave(file.path(storage_output_path,"paleo_future_stor_line_perc_hd_full_upper_ogden.png"),  p, width=8, height=3.5, dpi=300)
-ggsave(file.path(storage_output_path,"paleo_future_stor_line_perc_hd_full_upper_ogden.pdf"),  p, width=8, height=3.5)
-ggsave(file.path(storage_output_path,"paleo_future_stor_line_perc_hd_full_upper_ogden.svg"),  p, width=8, height=3.5)
-
-### Cut to 1900s
-p <- p + coord_cartesian(xlim=c(as.Date("1920-01-01"), as.Date("2066-01-01")))
-p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="10 years"), date_labels = "%Y")
-
-### Save figures
-ggsave(file.path(storage_output_path,"paleo_future_stor_line_perc_hd_1900_upper_ogden.png"),  p, width=8, height=3.5, dpi=300)
-ggsave(file.path(storage_output_path,"paleo_future_stor_line_perc_hd_1900_upper_ogden.pdf"),  p, width=8, height=3.5)
-ggsave(file.path(storage_output_path,"paleo_future_stor_line_perc_hd_1900_upper_ogden.svg"),  p, width=8, height=3.5)
+ggsave(file.path(plot_location,paste0("stor_timeseries_percent_hd_", region_i, "_", response_i,"_1900.png")),  p, width=8, height=3.5, dpi=300)
+ggsave(file.path(plot_location,paste0("stor_timeseries_percent_hd_", region_i, "_", response_i,"_1900.pdf")),  p, width=8, height=3.5)
+ggsave(file.path(plot_location,paste0("stor_timeseries_percent_hd_", region_i, "_", response_i,"_1900.svg")),  p, width=8, height=3.5)
+}
+}
 
 
 
 
-### To plot
-p <- ggplot(perc_plot, aes(x=date, y=upper_weber))
-p <- p + geom_area(data=trigger_plot, aes(y=res_perc, fill=trigger_level))
-p <- p + geom_line(aes(group=data), size=0.12)
-### This line previously looked like this:
-# p <- p + geom_line(aes(y=res_1, group=data))
-#p <- p + geom_line(data=trigger_plot, aes(y=mod_perc_annual), col="red")
-#p <- p + geom_line(data=trigger_plot, aes(y=ext_perc_annual), col="green")
-#p <- p + geom_line(data=trigger_plot, aes(y=sev_perc_annual), col="blue")
-p <- p + theme_classic_new()
-p <- p + scale_fill_manual(name="Storage Trigger", values= c("#f03b20",  "#feb24c", "#ffeda0"), limits= c("Extreme", "Severe", "Moderate"), labels=c("Extreme", "Severe", "Moderate"), guide = guide_legend())
-p <- p + coord_cartesian(xlim=c(as.Date("1428-01-01"), as.Date("2070-01-01")), ylim=c(0,1), expand=FALSE)
-p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="50 years"), date_labels = "%Y")
-p <- p + scale_y_continuous(name="Percent Storage", breaks=seq(0,1,0.1), labels=percent)
-p <- p + theme(legend.position="bottom")
-p
-
-
-### Save figures
-ggsave(file.path(storage_output_path,"paleo_future_stor_line_perc_hd_full_upper_weber.png"),  p, width=8, height=3.5, dpi=300)
-ggsave(file.path(storage_output_path,"paleo_future_stor_line_perc_hd_full_upper_weber.pdf"),  p, width=8, height=3.5)
-ggsave(file.path(storage_output_path,"paleo_future_stor_line_perc_hd_full_upper_weber.svg"),  p, width=8, height=3.5)
-
-### Cut to 1900s
-p <- p + coord_cartesian(xlim=c(as.Date("1920-01-01"), as.Date("2066-01-01")))
-p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="10 years"), date_labels = "%Y")
-
-### Save figures
-ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_1900_upper_weber.png"),  p, width=8, height=3.5, dpi=300)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_1900_upper_weber.pdf"),  p, width=8, height=3.5)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_1900_upper_weber.svg"),  p, width=8, height=3.5)
-
-
-
-### To plot
-p <- ggplot(perc_plot, aes(x=date, y=lower))
-p <- p + geom_area(data=trigger_plot, aes(y=res_perc, fill=trigger_level))
-p <- p + geom_line(aes(group=data), size=0.12)
-#p <- p + geom_line(data=trigger_plot, aes(y=mod_perc_annual), col="red")
-#p <- p + geom_line(data=trigger_plot, aes(y=ext_perc_annual), col="green")
-#p <- p + geom_line(data=trigger_plot, aes(y=sev_perc_annual), col="blue")
-p <- p + theme_classic_new()
-p <- p + scale_fill_manual(name="Storage Trigger", values= c("#f03b20",  "#feb24c", "#ffeda0"), limits= c("Extreme", "Severe", "Moderate"), labels=c("Extreme", "Severe", "Moderate"), guide = guide_legend())
-p <- p + coord_cartesian(xlim=c(as.Date("1428-01-01"), as.Date("2070-01-01")), ylim=c(0,1), expand=FALSE)
-p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="50 years"), date_labels = "%Y")
-p <- p + scale_y_continuous(name="Percent Storage", breaks=seq(0,1,0.1), labels=percent)
-p <- p + theme(legend.position="bottom")
-p
-
-
-### Save figures
-ggsave(file.path(storage_output_path,"paleo_future_stor_line_perc_hd_full_lower.png"),  p, width=8, height=3.5, dpi=300)
-ggsave(file.path(storage_output_path,"paleo_future_stor_line_perc_hd_full_lower.pdf"),  p, width=8, height=3.5)
-ggsave(file.path(storage_output_path,"paleo_future_stor_line_perc_hd_full_lower.svg"),  p, width=8, height=3.5)
-
-### Cut to 1900s
-p <- p + coord_cartesian(xlim=c(as.Date("1920-01-01"), as.Date("2066-01-01")))
-p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="10 years"), date_labels = "%Y")
-
-### Save figures
-ggsave(file.path(storage_output_path,"paleo_future_stor_line_perc_hd_1900_lower.png"),  p, width=8, height=3.5, dpi=300)
-ggsave(file.path(storage_output_path,"paleo_future_stor_line_perc_hd_1900_lower.pdf"),  p, width=8, height=3.5)
-ggsave(file.path(storage_output_path,"paleo_future_stor_line_perc_hd_1900_lower.svg"),  p, width=8, height=3.5)
 
 
 
