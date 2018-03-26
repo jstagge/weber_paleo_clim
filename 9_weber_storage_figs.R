@@ -37,8 +37,6 @@
 ### Clear any existing data or functions.
 rm(list=ls())
 
-
-
 ###########################################################################
 ## Set the Paths
 ###########################################################################
@@ -63,12 +61,27 @@ dir.create(write_output_base_path)
 ###########################################################################
 load(file.path(weber_output_path, "weber_storage_output.RData"))
 
-
 ###########################################################################
 ## Create Output Paths
 ###########################################################################
 storage_output_path <- file.path(write_output_base_path, "storage")
 dir.create(storage_output_path)
+
+
+###########################################################################
+## Set Colors
+###########################################################################
+### Colors to use for climate change scenarios
+cc_colors <- c("#0072B2", "#56B4E9", "#E69F00" , "#D55E00")
+data_colors <- c("#7fc97f", "grey40", "grey80", cc_colors)
+
+### Colors for triggers
+trigger_colors <- c("#f03b20",  "#feb24c", "#ffeda0")
+
+### Set regions
+region_levels <- as.factor(c("total_res", "current_res", "upper_weber", "upper_ogden", "lower"))
+region_names <- as.factor(c("Total System", "Current Reservoir", "Upper Weber", "Upper Ogden", "Lower Weber"))
+region_colors <- cb_pal(pal="wong", 3, sort=FALSE)
 
 ###########################################################################
 ## Plot Triggers
@@ -99,13 +112,13 @@ ggsave(file.path(storage_output_path,"trigger_levels_perc.pdf"),  p, width=4.5, 
 ggsave(file.path(storage_output_path,"trigger_levels_perc.svg"),  p, width=4.5, height=4)
 
 
-p <- ggplot(plot_triggers, aes(x=Month, y=perc, colour=variable))
+p <- ggplot(plot_triggers, aes(x=Month, y=perc, colour=variable, group=variable))
 #p <- ggplot(yup, aes(x=date, y=value/1000, fill=variable))
 p <- p + geom_line(size=0.8)
 #p <- p + geom_line(data=trigger_plot, aes(y=res_stor/1000, group=trigger_level, fill=NA), colour="grey30", linetype="longdash", size=0.8)
 p <- p + theme_classic_new(11)
 p <- p + scale_colour_manual(name="", values= c( "#ffeda0", "#feb24c", "#f03b20", "#8da0cb", "grey50"), limits= c( "moderate", "severe", "extreme", "Mean 2013-2017", "total"), labels=c("Moderate Trigger", "Severe Trigger", "Extreme Trigger", "Mean 2013-2017", "Full Storage"), guide = guide_legend(nrow=2,byrow=TRUE))
-p <- p + scale_x_continuous(name="Month", breaks=seq(1,12,1))
+p <- p + scale_x_discrete(name="Month")
 #p <- p + scale_y_continuous(name="Total System Storage (%)", breaks=seq(0, 1, 0.1), labels=percent)
 p <- p + scale_y_continuous(name="Total System Storage (%)", breaks= seq(0, 1, 0.1), labels = c("0", "", "20%", "", "40%", "", "60%", "", "80%", "", "100%"))
 p <- p + coord_cartesian(xlim=c(1,12), ylim=c(0,1.02), expand=FALSE)
@@ -113,17 +126,43 @@ p <- p + theme(legend.position="bottom")
 p
 
 ### Save figures
-ggsave(file.path(write_output_base_path,"trigger_levels_perc.png"),  p, width=4.5, height=4, dpi=600)
-ggsave(file.path(write_output_base_path,"trigger_levels_perc.pdf"),  p, width=4.5, height=4)
-ggsave(file.path(write_output_base_path,"trigger_levels_perc.svg"),  p, width=4.5, height=4)
+ggsave(file.path(storage_output_path,"trigger_levels_perc.png"),  p, width=4.5, height=4, dpi=600)
+ggsave(file.path(storage_output_path,"trigger_levels_perc.pdf"),  p, width=4.5, height=4)
+ggsave(file.path(storage_output_path,"trigger_levels_perc.svg"),  p, width=4.5, height=4)
 
 ###########################################################################
 ###  Test plots
 ###########################################################################
-p <- ggplot(stor_all, aes(x=month))
+yup <- stor_all %>% 
+	filter(response == "Base")
+	
+p <- ggplot(yup, aes(x=month))
 p <- p + geom_line(aes(y=total_res, group=wy, colour=data), size=0.3)
+p <- p + facet_wrap(~data)
+p <- p + scale_colour_manual(name="Scenario", values=data_colors)
 p <- p + theme_classic_new()
 p
+
+
+p <- ggplot(yup, aes(x=month, y=total_res, group=wy, colour=data))
+p <- p + geom_line(size=0.3)
+p <- p + scale_colour_manual(name="Scenario", values=data_colors)
+p <- p + theme_classic_new()
+p
+
+p <- ggplot(yup, aes(x=month))
+p <- p + geom_boxplot(aes(y=total_res, colour=data), size=0.3)
+p <- p + facet_wrap(~data)
+p <- p + scale_colour_manual(name="Scenario", values=data_colors)
+p <- p + theme_classic_new()
+p
+
+p <- ggplot(yup, aes(x=month))
+p <- p + geom_boxplot(aes(y=total_res, colour=data), size=0.3)
+p <- p + scale_colour_manual(name="Scenario", values=data_colors)
+p <- p + theme_classic_new()
+p
+
 
 
 p <- ggplot(stor_all, aes(x=date, fill=data))
@@ -138,13 +177,12 @@ p <- p + geom_line(data=subset(stor_percent, data=="base"), aes(x=base_date, y=t
 p <- p + theme_classic_new()
 p
 
-
-
-
 ###########################################################################
 ## Plot Storage Time Series as Area
 ###########################################################################
-area_df <- stor_all[stor_all$data %in% c("paleo", "observed", "hd"),]
+area_df <- stor_all %>% 
+	filter(data %in% c("paleo", "observed", "hd")) %>%
+	filter(response == "Base")
 
 p <- ggplot(area_df, aes(x=date, y=total_res/1000, fill=data))
 p <- p + geom_area( position = "identity", alpha=0.8)
@@ -152,8 +190,7 @@ p <- p + geom_hline(yintercept=0, size=0.2)
 #p <- p + geom_line(data=base_df, colour="grey30")
 #p <- p + geom_area( data=base_df, position = "identity", alpha=0.5)
 p <- p + theme_classic_new()
-#p <- p + scale_fill_manual(name="Scenario", values= c("grey30", "grey30", cc_colors), labels=c("Observed", "Base", "HD", "HW", "WD", "WW", "Reconst" ))
-p <- p + scale_fill_manual(name="Scenario", values= c("grey30", "#CC79A7", "#D55E00"), labels=c( "Observed", "Reconstr", "Climate Change (HD)"), limits=c("observed", "paleo", "hd"), guide = guide_legend())
+p <- p + scale_fill_manual(name="Scenario", values= data_colors[c(1, 2, 7)], labels=c( "Reconstructed", "Observed", "Climate Change (HD)"), limits=c("paleo","observed",  "hd"), guide = guide_legend())
 p <- p + coord_cartesian(xlim=c(as.Date("1425-01-01"), as.Date("2070-01-01")), expand=FALSE)
 p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="50 years"), date_labels = "%Y")
 p <- p + scale_y_continuous(name="System Storage (1,000 ac-ft)", breaks=seq(0,800,100))
@@ -161,56 +198,70 @@ p <- p + theme(legend.position="bottom")
 p
 
 ### Save figures
-ggsave(file.path(write_output_base_path,"paleo_future_stor_area_acft_hd_full.png"),  p, width=8, height=3.5, dpi=300)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_area_acft_hd_full.pdf"),  p, width=8, height=3.5)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_area_acft_hd_full.svg"),  p, width=8, height=3.5)
+ggsave(file.path(storage_output_path,"paleo_future_stor_area_acft_hd_full.png"),  p, width=8, height=3.5, dpi=300)
+ggsave(file.path(storage_output_path,"paleo_future_stor_area_acft_hd_full.pdf"),  p, width=8, height=3.5)
+ggsave(file.path(storage_output_path,"paleo_future_stor_area_acft_hd_full.svg"),  p, width=8, height=3.5)
 
 ### Cut to 1900s
 p <- p + coord_cartesian(xlim=c(as.Date("1920-01-01"), as.Date("2066-01-01")))
 p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="10 years"), date_labels = "%Y")
 
 ### Save figures
-ggsave(file.path(write_output_base_path,"paleo_future_stor_area_acft_hd_1900.png"),  p, width=8, height=3.5, dpi=300)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_area_acft_hd_1900.pdf"),  p, width=8, height=3.5)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_area_acft_hd_1900.svg"),  p, width=8, height=3.5)
+ggsave(file.path(storage_output_path,"paleo_future_stor_area_acft_hd_1900.png"),  p, width=8, height=3.5, dpi=300)
+ggsave(file.path(storage_output_path,"paleo_future_stor_area_acft_hd_1900.pdf"),  p, width=8, height=3.5)
+ggsave(file.path(storage_output_path,"paleo_future_stor_area_acft_hd_1900.svg"),  p, width=8, height=3.5)
 
 ###########################################################################
 ## Plot Storage Time Series as Line
 ###########################################################################
-line_df <- stor_all[stor_all$data %in% c("paleo", "observed", "hd"),]
-line_df2 <- stor_all[stor_all$data %in% c("base"),]
-line_df2$date <- line_df2$base_date
+line_df <- stor_all  %>% 
+	filter(data %in% c("paleo", "observed", "hd"))
+
+line_df2 <- stor_all  %>% 
+	filter(data %in% c("base")) %>%
+	mutate(date = base_date)
+
 line_df <- rbind(line_df, line_df2)
 
-p <- ggplot(line_df, aes(x=date, y=total_res/1000, colour=data))
-p <- p + geom_line()#, alpha=0.8)
-p <- p + geom_hline(yintercept=0, size=0.2)
-#p <- p + geom_line(data=base_df, colour="grey30")
-#p <- p + geom_area( data=base_df, position = "identity", alpha=0.5)
+for (response_i in response_levels){
+	line_plot <- line_df %>% 
+		filter(response == response_i)
+		
+for (i in seq(1, length(region_levels))) {
+region_i <- as.character(region_levels[i])
+region_plot_name <- region_names[i]
+
+y_name <- paste0(region_plot_name, " Storage (1,000 ac-ft)")
+
+p <- ggplot(line_plot, aes(x=date, y=get(region_i)/1000, colour=data))
+p <- p + geom_line(size=0.18)#, alpha=0.8)
+#p <- p + geom_hline(yintercept=0, size=0.15)
 p <- p + theme_classic_new()
-#p <- p + scale_fill_manual(name="Scenario", values= c("grey30", "grey30", cc_colors), labels=c("Observed", "Base", "HD", "HW", "WD", "WW", "Reconst" ))
-p <- p + scale_colour_manual(name="Scenario", values= c("grey30", "#1f78b4", "#CC79A7", "#D55E00"), labels=c( "Observed", "Base", "Reconstr", "Climate Change (HD)"), limits=c("observed", "base", "paleo", "hd"), guide = guide_legend())
-p <- p + coord_cartesian(xlim=c(as.Date("1425-01-01"), as.Date("2070-01-01")), expand=FALSE)
+p <- p + scale_colour_manual(name="Scenario", values= data_colors[c(1, 2, 7)], labels=c( "Reconstructed", "Observed", "Climate Change (HD)"), limits=c("paleo","observed",  "hd"), guide = guide_legend())
+p <- p + coord_cartesian(xlim=c(as.Date("1425-01-01"), as.Date("2070-01-01")), expand=FALSE) + expand_limits(y=0)
 p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="50 years"), date_labels = "%Y")
-p <- p + scale_y_continuous(name="System Storage (1,000 ac-ft)", breaks=seq(0,800,100))
+p <- p + scale_y_continuous(name=y_name, breaks=seq(0,800,100))
 p <- p + theme(legend.position="bottom")
 p
 
+plot_location <- file.path(storage_output_path,paste0("time_series/", response_i))
+dir.create(plot_location, recursive=TRUE, showWarnings=FALSE)
+
 ### Save figures
-ggsave(file.path(write_output_base_path,"paleo_future_stor_area_acft_hd_full.png"),  p, width=8, height=3.5, dpi=300)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_area_acft_hd_full.pdf"),  p, width=8, height=3.5)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_area_acft_hd_full.svg"),  p, width=8, height=3.5)
+ggsave(file.path(plot_location,paste0("stor_timeseries_acft_hd_", region_i, "_", response_i,".png")),  p, width=8, height=3.5, dpi=300)
+ggsave(file.path(plot_location,paste0("stor_timeseries_acft_hd_", region_i, "_", response_i,".pdf")),  p, width=8, height=3.5)
+ggsave(file.path(plot_location,paste0("stor_timeseries_acft_hd_", region_i, "_", response_i,".svg")),  p, width=8, height=3.5)
 
 ### Cut to 1900s
-p <- p + coord_cartesian(xlim=c(as.Date("1920-01-01"), as.Date("2066-01-01")))
+p <- p + coord_cartesian(xlim=c(as.Date("1920-01-01"), as.Date("2066-01-01")), expand=FALSE) + expand_limits(y=0)
 p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="10 years"), date_labels = "%Y")
 
 ### Save figures
-ggsave(file.path(write_output_base_path,"paleo_future_stor_area_acft_hd_1900.png"),  p, width=8, height=3.5, dpi=300)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_area_acft_hd_1900.pdf"),  p, width=8, height=3.5)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_area_acft_hd_1900.svg"),  p, width=8, height=3.5)
-
-
+ggsave(file.path(plot_location,paste0("stor_timeseries_acft_hd_", region_i, "_", response_i,"_1900.png")),  p, width=8, height=3.5, dpi=300)
+ggsave(file.path(plot_location,paste0("stor_timeseries_acft_hd_", region_i, "_", response_i,"_1900.pdf")),  p, width=8, height=3.5)
+ggsave(file.path(plot_location,paste0("stor_timeseries_acft_hd_", region_i, "_", response_i,"_1900.svg")),  p, width=8, height=3.5)
+}
+}
 
 ###########################################################################
 ## Plot Storage percent Time Series
@@ -226,9 +277,9 @@ perc_plot <- rbind(perc_temp[perc_test, ], perc_plot)
 ### Previously just this
 # perc_plot <- stor_percent[stor_all$data %in% c("paleo", "observed", "hd"),]
 
-
 ### Create dataframe for triggers
-trigger_plot <- data.frame(date = rep(c(min(perc_plot$date), max(perc_plot$date)), 3))
+### Add a 6 year buffer for plotting
+trigger_plot <- data.frame(date = rep(c(min(perc_plot$date) %m+% years(-6), max(perc_plot$date) %m+% years(6)), 3))
 trigger_plot$month <- month(trigger_plot$date)
 trigger_plot$year <- year(trigger_plot$date)
 
@@ -257,23 +308,19 @@ p <- p + scale_y_continuous(name="Percent Storage", breaks=seq(0,1,0.1), labels=
 p <- p + theme(legend.position="bottom")
 p
 
-
 ### Save figures
-ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_full.png"),  p, width=8, height=3.5, dpi=300)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_full.pdf"),  p, width=8, height=3.5)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_full.svg"),  p, width=8, height=3.5)
+ggsave(file.path(storage_output_path,"paleo_future_stor_line_perc_hd_full.png"),  p, width=8, height=3.5, dpi=300)
+ggsave(file.path(storage_output_path,"paleo_future_stor_line_perc_hd_full.pdf"),  p, width=8, height=3.5)
+ggsave(file.path(storage_output_path,"paleo_future_stor_line_perc_hd_full.svg"),  p, width=8, height=3.5)
 
 ### Cut to 1900s
-p <- p + coord_cartesian(xlim=c(as.Date("1920-01-01"), as.Date("2066-01-01")))
+p <- p + coord_cartesian(xlim=c(as.Date("1920-01-01"), as.Date("2066-01-01")), ylim=c(0,1), expand=FALSE)
 p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="10 years"), date_labels = "%Y")
 
 ### Save figures
-ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_1900.png"),  p, width=8, height=3.5, dpi=300)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_1900.pdf"),  p, width=8, height=3.5)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_1900.svg"),  p, width=8, height=3.5)
-
-
-
+ggsave(file.path(storage_output_path,"paleo_future_stor_line_perc_hd_1900.png"),  p, width=8, height=3.5, dpi=300)
+ggsave(file.path(storage_output_path,"paleo_future_stor_line_perc_hd_1900.pdf"),  p, width=8, height=3.5)
+ggsave(file.path(storage_output_path,"paleo_future_stor_line_perc_hd_1900.svg"),  p, width=8, height=3.5)
 
 
 ### To plot
@@ -293,18 +340,18 @@ p
 
 
 ### Save figures
-ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_full_upper_ogden.png"),  p, width=8, height=3.5, dpi=300)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_full_upper_ogden.pdf"),  p, width=8, height=3.5)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_full_upper_ogden.svg"),  p, width=8, height=3.5)
+ggsave(file.path(storage_output_path,"paleo_future_stor_line_perc_hd_full_upper_ogden.png"),  p, width=8, height=3.5, dpi=300)
+ggsave(file.path(storage_output_path,"paleo_future_stor_line_perc_hd_full_upper_ogden.pdf"),  p, width=8, height=3.5)
+ggsave(file.path(storage_output_path,"paleo_future_stor_line_perc_hd_full_upper_ogden.svg"),  p, width=8, height=3.5)
 
 ### Cut to 1900s
 p <- p + coord_cartesian(xlim=c(as.Date("1920-01-01"), as.Date("2066-01-01")))
 p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="10 years"), date_labels = "%Y")
 
 ### Save figures
-ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_1900_upper_ogden.png"),  p, width=8, height=3.5, dpi=300)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_1900_upper_ogden.pdf"),  p, width=8, height=3.5)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_1900_upper_ogden.svg"),  p, width=8, height=3.5)
+ggsave(file.path(storage_output_path,"paleo_future_stor_line_perc_hd_1900_upper_ogden.png"),  p, width=8, height=3.5, dpi=300)
+ggsave(file.path(storage_output_path,"paleo_future_stor_line_perc_hd_1900_upper_ogden.pdf"),  p, width=8, height=3.5)
+ggsave(file.path(storage_output_path,"paleo_future_stor_line_perc_hd_1900_upper_ogden.svg"),  p, width=8, height=3.5)
 
 
 
@@ -328,9 +375,9 @@ p
 
 
 ### Save figures
-ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_full_upper_weber.png"),  p, width=8, height=3.5, dpi=300)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_full_upper_weber.pdf"),  p, width=8, height=3.5)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_full_upper_weber.svg"),  p, width=8, height=3.5)
+ggsave(file.path(storage_output_path,"paleo_future_stor_line_perc_hd_full_upper_weber.png"),  p, width=8, height=3.5, dpi=300)
+ggsave(file.path(storage_output_path,"paleo_future_stor_line_perc_hd_full_upper_weber.pdf"),  p, width=8, height=3.5)
+ggsave(file.path(storage_output_path,"paleo_future_stor_line_perc_hd_full_upper_weber.svg"),  p, width=8, height=3.5)
 
 ### Cut to 1900s
 p <- p + coord_cartesian(xlim=c(as.Date("1920-01-01"), as.Date("2066-01-01")))
@@ -360,18 +407,18 @@ p
 
 
 ### Save figures
-ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_full_lower.png"),  p, width=8, height=3.5, dpi=300)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_full_lower.pdf"),  p, width=8, height=3.5)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_full_lower.svg"),  p, width=8, height=3.5)
+ggsave(file.path(storage_output_path,"paleo_future_stor_line_perc_hd_full_lower.png"),  p, width=8, height=3.5, dpi=300)
+ggsave(file.path(storage_output_path,"paleo_future_stor_line_perc_hd_full_lower.pdf"),  p, width=8, height=3.5)
+ggsave(file.path(storage_output_path,"paleo_future_stor_line_perc_hd_full_lower.svg"),  p, width=8, height=3.5)
 
 ### Cut to 1900s
 p <- p + coord_cartesian(xlim=c(as.Date("1920-01-01"), as.Date("2066-01-01")))
 p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="10 years"), date_labels = "%Y")
 
 ### Save figures
-ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_1900_lower.png"),  p, width=8, height=3.5, dpi=300)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_1900_lower.pdf"),  p, width=8, height=3.5)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_line_perc_hd_1900_lower.svg"),  p, width=8, height=3.5)
+ggsave(file.path(storage_output_path,"paleo_future_stor_line_perc_hd_1900_lower.png"),  p, width=8, height=3.5, dpi=300)
+ggsave(file.path(storage_output_path,"paleo_future_stor_line_perc_hd_1900_lower.pdf"),  p, width=8, height=3.5)
+ggsave(file.path(storage_output_path,"paleo_future_stor_line_perc_hd_1900_lower.svg"),  p, width=8, height=3.5)
 
 
 
@@ -398,10 +445,9 @@ p <- p + theme(legend.position="bottom")
 p <- p + facet_wrap(~variable, nrow = 4)
 p
 
-
 ### Save figures
-ggsave(file.path(write_output_base_path,"paleo_future_stor_perc.png"),  p, width=11, height=9, dpi=300)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_perc.pdf"),  p, width=11, height=9)
+ggsave(file.path(storage_output_path,"paleo_future_stor_perc.png"),  p, width=11, height=9, dpi=300)
+ggsave(file.path(storage_output_path,"paleo_future_stor_perc.pdf"),  p, width=11, height=9)
 
 
 
@@ -634,6 +680,51 @@ p <- p + facet_grid(precip ~ temp)
 ggsave(file.path(write_output_base_path,"clim_change_storage_byregion_acft_square.png"),  p, width=8, height=7, dpi=300)
 ggsave(file.path(write_output_base_path,"clim_change_storage_byregion_acft_square.pdf"),  p, width=8, height=7)
 ggsave(file.path(write_output_base_path,"clim_change_storage_byregion_acft_square.svg"),  p, width=8, height=7)
+
+
+
+
+
+
+
+
+
+
+
+
+
+###################################
+###  Silly attempts
+###################################
+require(ggridges)
+
+p <- ggplot(yup %>% filter(data == "paleo"), aes(x=total_res, y=month))
+#p <- p + geom_density_ridges()
+p <- p + geom_density_ridges(scale = 3)#, rel_min_height = 0.03)scale = 10, 
+#p <- p + scale_colour_manual(name="Scenario", values=data_colors)
+p <- p +  theme_ridges()
+p
+
+p <- ggplot(yup %>% filter(data %in% c("paleo", "hd")), aes(x=total_res, y=month, fill=data))
+#p <- p + geom_density_ridges()
+p <- p + geom_density_ridges(scale = 2, alpha=0.3)#, rel_min_height = 0.03)scale = 10, 
+#p <- p + scale_colour_manual(name="Scenario", values=data_colors)
+p <- p +  theme_ridges()
+p
+
+p <- ggplot(yup %>% filter(data == "paleo"), aes(x=total_res, y=month, fill= ..x..))
+#p <- p + geom_density_ridges()
+p <- p + geom_density_ridges_gradient(scale = 3)#, rel_min_height = 0.03)
+#p <- p + scale_colour_manual(name="Scenario", values=data_colors)
+p <- p +  theme_ridges()
+p
+
+
+
+
+
+
+
 
 
 
