@@ -64,6 +64,11 @@ dir.create(write_output_base_path)
 load(file.path(weber_output_path, "weber_storage_output.RData"))
 
 
+###########################################################################
+## Create Output Paths
+###########################################################################
+storage_output_path <- file.path(write_output_base_path, "storage")
+dir.create(storage_output_path)
 
 ###########################################################################
 ## Plot Triggers
@@ -76,22 +81,22 @@ plot_triggers <- melt(plot_triggers[,c(seq(1,5), 9)], "Month")
 names(plot_triggers)[3] <- "storage"
 plot_triggers$perc <- plot_triggers$storage / sum(total_storage$Total)
 
-p <- ggplot(plot_triggers, aes(x=Month, y=storage/1000, colour=variable))
+p <- ggplot(plot_triggers, aes(x=Month, y=storage/1000, colour=variable, group=variable))
 #p <- ggplot(yup, aes(x=date, y=value/1000, fill=variable))
 p <- p + geom_line(size=0.8)
 #p <- p + geom_line(data=trigger_plot, aes(y=res_stor/1000, group=trigger_level, fill=NA), colour="grey30", linetype="longdash", size=0.8)
 p <- p + theme_classic_new(11)
 p <- p + scale_colour_manual(name="", values= c( "#ffeda0", "#feb24c", "#f03b20", "#8da0cb", "grey50"), limits= c( "moderate", "severe", "extreme", "Mean 2013-2017", "total"), labels=c("Moderate Trigger", "Severe Trigger", "Extreme Trigger", "Mean 2013-2017", "Full Storage"), guide = guide_legend(nrow=2,byrow=TRUE))
-p <- p + scale_x_continuous(name="Month", breaks=seq(1,12,1))
+p <- p + scale_x_discrete(name="Month")
 p <- p + scale_y_continuous(name="Total System Storage (1,000 ac-ft)", breaks=seq(0, 600, 100))
 p <- p + coord_cartesian(xlim=c(1,12), ylim=c(0,sum(total_storage$Total/1000)*1.1), expand=FALSE)
 p <- p + theme(legend.position="bottom")
 p
 
 ### Save figures
-ggsave(file.path(write_output_base_path,"trigger_levels_perc.png"),  p, width=4.5, height=4, dpi=600)
-ggsave(file.path(write_output_base_path,"trigger_levels_perc.pdf"),  p, width=4.5, height=4)
-ggsave(file.path(write_output_base_path,"trigger_levels_perc.svg"),  p, width=4.5, height=4)
+ggsave(file.path(storage_output_path,"trigger_levels_perc.png"),  p, width=4.5, height=4, dpi=600)
+ggsave(file.path(storage_output_path,"trigger_levels_perc.pdf"),  p, width=4.5, height=4)
+ggsave(file.path(storage_output_path,"trigger_levels_perc.svg"),  p, width=4.5, height=4)
 
 
 p <- ggplot(plot_triggers, aes(x=Month, y=perc, colour=variable))

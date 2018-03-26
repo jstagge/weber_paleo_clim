@@ -72,6 +72,7 @@ require(ggdendro)
 require(ade4)
 library(dendextend)
 require(ggsci)
+require(tidyverse)
 
 ### Load project specific functions
 file.sources = list.files(function_path, pattern="*.R", recursive=TRUE)
@@ -121,6 +122,110 @@ read_location <- file.path(write_output_base_path, paste0(site_id,"_drought_deta
 
 drought_event_summary <- read.csv(file = read_location)
 
+
+###########################################################################
+## Open Output File so I can add demand shortages
+###########################################################################
+#e1 <- new.env() 
+#load(file.path(weber_output_path, "weber_storage_output.RData"), e1) 
+#drought_event_system <- get('drought_event_system', e1) 
+#rm(e1)
+### This does a weird thing where data is wrong
+
+load(file.path(weber_output_path, "weber_storage_output.RData"))
+load(file.path(weber_output_path, "weber_delivery_output.RData"))
+
+
+
+
+###########################################################################
+###  New Approach to  Drought Events
+###########################################################################
+data_and_responses <- expand.grid(data=data_levels, response=response_levels)
+
+data_counter <- 0
+	
+for (i in seq(1,dim(data_and_responses)[1])){
+
+	data_i <- data_and_responses$data[i]
+	response_i <- data_and_responses$response[i]
+	
+	stor_subset <- stor_all %>%
+		filter(data==data_i, response == response_i) %>% 
+		arrange(date)
+		
+	shortage_subset <- demand_deliv_df %>%
+		filter(data==data_i, response == response_i) %>%
+		select(date, data, response, node, demand_shortage) %>%
+		spread(node, demand_shortage) %>% 	
+		arrange(date)	
+	
+	all_subset <- stor_subset %>% 
+		full_join(shortage_subset, by="date", suffix=c("_stor","_short")) %>%
+		arrange(date)	
+
+	for (j in seq(1, dim(drought_event_summary)[1])){
+		event_j <- drought_event_summary[j,]
+	
+		event_data <- all_subset %>%
+			filter(date >= as.Date(event_j$begin), date <= as.Date(event_j$end))
+		
+		if (dim(event_data)[1] > 0) {
+			to_min_stor <- event_data %>% select(starts_with("res_"), upper_weber_stor, upper_ogden_stor, lower_stor, total_res, current_res)
+			to_min_stor <- apply(to_min_stor, 2, min, na.rm=TRUE)
+			names(to_min_stor) <- paste0(names(to_min_stor), "_min")
+		
+			to_max_stor <- event_data %>% select(moderate, severe, extreme)
+			to_max_stor <- apply(to_max_stor, 2, max, na.rm=TRUE)
+			names(to_max_stor) <- paste0(names(to_max_stor), "_max")
+			
+			to_max_short <- event_data %>% select(starts_with("SA"), upper_weber_short, upper_ogden_short, lower_short, system)
+			to_max_short <- apply(to_max_short, 2, max, na.rm=TRUE)
+			names(to_max_short) <- paste0(names(to_max_short), "_max")	
+		
+			event_j <- cbind(event_j, response=response_i, t(to_min_stor), t(to_max_stor), t(to_max_short))
+		
+			if (data_counter == 1){
+				drought_event_system <- rbind(drought_event_system, event_j)
+			} else {
+				drought_event_system <- event_j
+				data_counter <- 1
+			}
+		}
+	}
+}
+		
+
+### Need to refactor data column
+drought_event_system$data <- factor(drought_event_system$data, levels=c("paleo", "observed", "base", "WWN5", "HWN5", "CTN5", "WDN5", "HDN5"), labels=c("paleo", "observed", "base", "ww", "hw", "ctn", "wd", "hd"))
+
+
+
+
+
+
+
+
+ggplot(subset(drought_event_system, response=="Base"), aes(x=dura_months/12, y=min_perc, colour=current_res_min)) + geom_point(size=4) + scale_colour_distiller(type = "seq", palette = "YlOrRd") + theme_classic_new()
+
+ggplot(subset(drought_event_system, response=="Base"), aes(x=dura_months/12, y=min_perc, colour=current_res_min)) + geom_point(size=4) + scale_color_viridis(option="magma") + theme_classic_new()
+
+
+ggplot(subset(drought_event_system, response=="Base"), aes(x=dura_months/12, y=min_perc, colour=current_res_min)) + geom_point(size=4) + scale_color_viridis(option="cividis") + theme_classic_new()
+
+ggplot(subset(drought_event_system, response=="Base"), aes(x=dura_months/12, y=min_perc, colour=current_res_min)) + geom_point(size=4) + scale_color_cividis(direction=-1) + theme_classic_new()
+ 
+
+ggplot(subset(drought_event_system, response=="Base"), aes(x=dura_months/12, y=min_perc, colour=upper_ogden_stor_min)) + geom_point(size=6) + scale_color_cividis(direction=-1) + theme_classic_new()
+		
+
+ggplot(subset(drought_event_system, response=="Base" & data=="paleo"), aes(x=dura_months/12, y=min_perc, colour=log10(system_max))) + geom_point(size=4) + scale_colour_viridis(option="magma")
+
+
+ggplot(subset(drought_event_system, response=="Base" & data=="paleo"), aes(x=dura_months/12, y=min_perc, colour=log10(system_max))) + geom_point(size=4) + scale_color_cividis(direction=1)
+
+
+ggplot(subset(drought_event_system, response=="Base"), aes(x=dura_months/12, y=min_perc, colour=log10(SA11_max))) + geom_point(size=4) + scale_colour_distiller(type = "seq", palette = "YlOrRd", direction = 1) + theme_classic_new()
 
 
 
@@ -230,17 +335,7 @@ for (k in cluster.list) {
 
 
 
-ggplot(subset(drought_event_system, response=="Base"), aes(x=dura_months, y=min_perc, colour=current_res_min)) + geom_point(size=4) + scale_colour_distiller(type = "seq", palette = "YlOrRd") + theme_classic_new()
 
-ggplot(subset(drought_event_system, response=="Base"), aes(x=dura_months, y=min_perc, colour=current_res_min)) + geom_point(size=4) + scale_color_viridis(option="magma") + theme_classic_new()
-
-
-ggplot(subset(drought_event_system, response=="Base"), aes(x=dura_months, y=min_perc, colour=current_res_min)) + geom_point(size=4) + scale_color_viridis(option="cividis") + theme_classic_new()
-
-ggplot(subset(drought_event_system, response=="Base"), aes(x=dura_months, y=min_perc, colour=current_res_min)) + geom_point(size=6) + scale_color_cividis(direction=-1) + theme_classic_new()
- 
-
-ggplot(subset(drought_event_system, response=="Base"), aes(x=dura_months, y=min_perc, colour=upper_ogden_min)) + geom_point(size=6) + scale_color_cividis(direction=-1) + theme_classic_new()
 
 
  data_clustering <- drought_event_system %>% 
