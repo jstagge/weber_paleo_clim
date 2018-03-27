@@ -81,7 +81,9 @@ trigger_colors <- c("#f03b20",  "#feb24c", "#ffeda0")
 ### Set regions
 region_levels <- as.factor(c("total_res", "current_res", "upper_weber", "upper_ogden", "lower"))
 region_names <- as.factor(c("Total System", "Current Reservoir", "Upper Weber", "Upper Ogden", "Lower Weber"))
+
 region_colors <- cb_pal(pal="wong", 3, sort=FALSE)
+region_colors <- region_colors[c(1,3,2)]
 
 ###########################################################################
 ## Plot Triggers
@@ -374,13 +376,18 @@ ggsave(file.path(storage_output_path,"paleo_future_stor_perc.pdf"),  p, width=11
 ###########################################################################
 ## Plot Shortage Time Series by region
 ###########################################################################
-area_df <- stor_all[stor_all$data %in% c("paleo", "observed", "base", "hd"),]
-area_region <- area_df[, names(area_df) %in% c("date", "base_date", "data", "upper_ogden", "upper_weber", "lower")]
-area_region <- melt(area_region, id.vars=c("date", "base_date", "data"))#, measure.vars=c("upper_ogden", "upper_weber", "lower"))
-area_region$data <- factor(area_region$data)
-area_region$variable <- factor(area_region$variable, levels=c("upper_weber", "upper_ogden", "lower"))
+for (response_i in response_levels){
 
-p <- ggplot(subset(area_region, data=="observed"), aes(x=date, y=value/1000, fill=variable))
+area_region <- stor_all %>% 
+	filter(data %in% c("paleo", "observed", "base", "response", "hd")) %>%
+	filter(response == response_i) %>%
+	select(date, base_date, data, upper_ogden, upper_weber, lower) %>%
+	gather(res, value, c("upper_ogden", "upper_weber", "lower"))
+
+area_region$data <- factor(area_region$data)
+area_region$res <- factor(area_region$res, levels=c("upper_ogden", "upper_weber", "lower"))
+	
+p <- ggplot(subset(area_region, data=="observed"), aes(x=date, y=value/1000, fill=res))
 #p <- ggplot(yup, aes(x=date, y=value/1000, fill=variable))
 p <- p + geom_area()
 p <- p + geom_area(data=subset(area_region, data=="paleo" & date < as.Date("1980-10-01")))
@@ -388,8 +395,7 @@ p <- p + geom_area(data=subset(area_region, data=="hd"))
 p <- p + geom_area(data=subset(area_region, data=="base"), aes(x=base_date))
 p <- p + geom_line(data=trigger_plot, aes(y=res_stor/1000, group=trigger_level, fill=NA), colour="grey30", linetype="longdash", size=0.5)
 p <- p + theme_classic_new()
-#p <- p + scale_fill_manual(name="Scenario", values= c("grey30", "grey30", cc_colors), labels=c("Observed", "Base", "HD", "HW", "WD", "WW", "Reconst" ))
-p <- p + scale_fill_manual(name="Region", values= res_colors, labels=c("Upper Weber", "Upper Ogden", "Lower Weber"), breaks=c("upper_weber", "upper_ogden", "lower"), guide = guide_legend())
+p <- p + scale_fill_manual(name="Region", values= res_colors[c(1,3,2)], labels=c("Upper Ogden", "Upper Weber", "Lower Weber"), breaks=c("upper_ogden", "upper_weber", "lower"), guide = guide_legend())
 p <- p + coord_cartesian(xlim=c(as.Date("1425-01-01"), as.Date("2070-01-01")), expand=FALSE)
 p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="50 years"), date_labels = "%Y")
 p <- p + scale_y_continuous(name="System Storage (1,000 ac-ft)", breaks=seq(0,800,100))
@@ -397,20 +403,62 @@ p <- p + theme(legend.position="bottom")
 p
 
 
-### Save figures
-ggsave(file.path(write_output_base_path,"paleo_future_stor_byregion_acft_hd_full.png"),  p, width=8, height=3.5, dpi=300)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_byregion_acft_hd_full.pdf"),  p, width=8, height=3.5)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_byregion_acft_hd_full.svg"),  p, width=8, height=3.5)
+plot_location <- file.path(storage_output_path,paste0("time_series_regions/", response_i))
+dir.create(plot_location, recursive=TRUE, showWarnings=FALSE)
 
+### Save figures
+ggsave(file.path(plot_location,paste0("stor_byregion_timeseries_percent_hd_", response_i,".png")),  p, width=8, height=3.5, dpi=300)
+ggsave(file.path(plot_location,paste0("stor_byregion_timeseries_percent_hd_", response_i,".pdf")),  p, width=8, height=3.5)
+ggsave(file.path(plot_location,paste0("stor_byregion_timeseries_percent_hd_", response_i,".svg")),  p, width=8, height=3.5)
 
 ### Cut to 1900s
-p <- p + coord_cartesian(xlim=c(as.Date("1920-01-01"), as.Date("2066-01-01")))
+p <- p + coord_cartesian(xlim=c(as.Date("1920-01-01"), as.Date("2066-01-01")), expand=FALSE) + expand_limits(y=0)
 p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="10 years"), date_labels = "%Y")
 
 ### Save figures
-ggsave(file.path(write_output_base_path,"paleo_future_stor_byregion_acft_hd_1900.png"),  p, width=8, height=3.5, dpi=300)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_byregion_acft_hd_1900.pdf"),  p, width=8, height=3.5)
-ggsave(file.path(write_output_base_path,"paleo_future_stor_byregion_acft_hd_1900.svg"),  p, width=8, height=3.5)
+ggsave(file.path(plot_location,paste0("stor_byregion_timeseries_percent_hd_", response_i,"_1900.png")),  p, width=8, height=3.5, dpi=300)
+ggsave(file.path(plot_location,paste0("stor_byregion_timeseries_percent_hd_", response_i,"_1900.pdf")),  p, width=8, height=3.5)
+ggsave(file.path(plot_location,paste0("stor_byregion_timeseries_percent_hd_", response_i,"_1900.svg")),  p, width=8, height=3.5)
+
+}
+
+
+###########################################################################
+## Plot Shortage Time Series by region using a facet
+###########################################################################
+area_region <- stor_all %>% 
+	filter(data %in% c("paleo", "observed", "base", "response", "hd")) %>%
+	select(date, base_date, data, response, upper_ogden, upper_weber, lower) %>%
+	gather(res, value, c("upper_ogden", "upper_weber", "lower"))
+
+area_region$data <- factor(area_region$data)
+area_region$res <- factor(area_region$res, levels=c("upper_ogden", "upper_weber", "lower"))
+	
+p <- ggplot(subset(area_region, data=="observed"), aes(x=date, y=value/1000, fill=res))
+#p <- p + geom_area()
+p <- p + stat_smooth(geom = 'area', method = 'loess', span = 1/30, position='stack')
+      
+p <- p + geom_area(data=subset(area_region, data=="paleo" & date < as.Date("1980-10-01")))
+p <- p + geom_area(data=subset(area_region, data=="hd"))
+p <- p + geom_area(data=subset(area_region, data=="base"), aes(x=base_date))
+p <- p + geom_line(data=trigger_plot, aes(y=res_stor/1000, group=trigger_level, fill=NA), colour="grey30", linetype="longdash", size=0.5)
+p <- p + theme_classic_new()
+p <- p + scale_fill_manual(name="Region", values= res_colors[c(1,3,2)], labels=c("Upper Ogden", "Upper Weber", "Lower Weber"), breaks=c("upper_ogden", "upper_weber", "lower"), guide = guide_legend())
+p <- p + coord_cartesian(xlim=c(as.Date("1425-01-01"), as.Date("2070-01-01")), expand=FALSE)
+p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="50 years"), date_labels = "%Y")
+p <- p + scale_y_continuous(name="System Storage (1,000 ac-ft)", breaks=seq(0,800,100))
+p <- p + theme(legend.position="bottom")
+p <- p + facet_grid(response ~ .)
+p
+
+plot_location <- file.path(storage_output_path,"time_series_regions")
+dir.create(plot_location, recursive=TRUE, showWarnings=FALSE)
+
+### Save figures
+ggsave(file.path(plot_location,paste0("stor_byregion_timeseries_percent_hd_facet.png")),  p, width=8, height=8, dpi=300)
+ggsave(file.path(plot_location,paste0("stor_byregion_timeseries_percent_hd_facet.pdf")),  p, width=8, height=8)
+ggsave(file.path(plot_location,paste0("stor_byregion_timeseries_percent_hd_facet.svg")),  p, width=8, height=8)
+
 
 
 
