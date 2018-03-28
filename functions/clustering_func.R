@@ -1,10 +1,8 @@
-
-
 ###########################################################################
 ## Determine clusters
 ###########################################################################
 
-calc_clusters <- function(clustering_tree, cluster.list, drought_df) {
+calc_clusters <- function(clustering_tree, cluster.list) {
 
 ### Calculate length of sites
 site_length <- length(clustering_tree$labels)
@@ -12,7 +10,9 @@ site_length <- length(clustering_tree$labels)
 ### Create dataframe to hold cluster results
 clusters <- matrix(NA,site_length,length(cluster.list))
 colnames(clusters) <- paste("k_",cluster.list, sep="")
-rownames(clusters) <- rownames(drought_df)#substr(drought_df$begin, 1, 7)
+rownames(clusters) <- seq(1,site_length)
+#This causes failure if data is not in order
+#rownames(clusters) <- substr(drought_event_df$begin, 1, 7)
 
 cluster_goodness <- matrix(NA,length(cluster.list), 2)
 rownames(cluster_goodness) <- paste("k_",cluster.list, sep="")
@@ -64,6 +64,8 @@ return(list(clust=clusters, goodness=cluster_goodness))
 }
 
 
+
+
 ###########################################################################
 ## Goodness of fit plot
 ###########################################################################
@@ -92,7 +94,7 @@ return(p)
 ## Cluster plot
 ###########################################################################
 plot_clusters <- function(plot_df, k, save_directory) {
-	p <- ggplot(cluster_event_df, aes(x=dura_months/12, y=min_perc*100, label=substr(begin,1,4)))
+	p <- ggplot(plot_df, aes(x=dura_months/12, y=min_perc*100, label=substr(begin,1,4)))
 	#p <- p + geom_point(aes(colour=timeperiod))
 	p <- p + geom_text(aes(colour=as.factor(get(paste0("k_",k)))), size=2.7)
 	p <- p + scale_x_continuous(name="Drought Duration (Years)", breaks=seq(0,16,2))
