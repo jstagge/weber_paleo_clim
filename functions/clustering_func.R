@@ -23,7 +23,7 @@ for (k in cluster.list) {
 ### Name clusters in order of dendrogram
 cluster_number <- cutree(clustering_tree, k, order_clusters_as_data=FALSE )
 ### Reorder back to original order
-clusters[,k-1] <- as.factor(cluster_number[order(names(cluster_number))])
+clusters[,k-1] <- as.factor(cluster_number[order(as.numeric(names(cluster_number)))])
 
 cluster_goodness[k-1,] <- c(k, summary(silhouette(cutree(clustering_tree, k), distMatrix))$avg.width)
 }
@@ -65,7 +65,6 @@ return(list(clust=clusters, goodness=cluster_goodness))
 
 
 
-
 ###########################################################################
 ## Goodness of fit plot
 ###########################################################################
@@ -94,7 +93,7 @@ return(p)
 ## Cluster plot
 ###########################################################################
 plot_clusters <- function(plot_df, k, save_directory) {
-	p <- ggplot(plot_df, aes(x=dura_months/12, y=min_perc*100, label=substr(begin,1,4)))
+	p <- ggplot(cluster_event_df, aes(x=dura_months/12, y=min_perc*100, label=substr(begin,1,4)))
 	#p <- p + geom_point(aes(colour=timeperiod))
 	p <- p + geom_text(aes(colour=as.factor(get(paste0("k_",k)))), size=2.7)
 	p <- p + scale_x_continuous(name="Drought Duration (Years)", breaks=seq(0,16,2))
