@@ -132,8 +132,250 @@ drought_event_summary <- read.csv(file = read_location)
 #rm(e1)
 ### This does a weird thing where data is wrong
 
-load(file.path(weber_output_path, "weber_storage_output.RData"))
-load(file.path(weber_output_path, "weber_delivery_output.RData"))
+#load(file.path(weber_output_path, "weber_storage_output.RData"))
+#load(file.path(weber_output_path, "weber_delivery_output.RData"))
+
+
+
+###########################################################################
+## Calculate Distance Matrix
+###########################################################################
+### Extract data for clustering
+data_clustering <- drought_event_summary %>% 
+	filter(data %in% c("observed", "paleo")) #%>%
+	#arrange(begin) # %>%
+	#select(-begin, -end, -data)
+
+head(data_clustering)
+tail(data_clustering)
+
+#row.names(data_clustering) <- substr(drought_event_df$begin,1,7)
+ 
+### Handle Circular variables
+data_circ <- data_clustering %>% select(begin_month, end_month)
+head(data_circ)
+plot(data_circ$begin_month, data_circ$end_month)
+data_circ <- prep.circular(data_circ, c(1,1), c(12,12))
+head(data_circ)
+### This changes the numbers - strange, actually just makes them go from 0 to 11
+
+### Handle Ordinal variables
+data_ord <- data.frame(data_clustering$dura_months)
+
+### Handle Quantitative variables
+data_quant <- data_clustering %>% select(-begin, -end, -begin_month, -end_month, -dura_months, -data)
+
+### Create distance matrix
+ktab1 <- ktab.list.df(list(data_circ, data_ord, data_quant))
+### Apply Gowers distance to a mix of circular, ordinal, and quantitative columns
+### Scale each column by range before calculating distances
+### Apply the method of Pavoine S., Vallet, J., Dufour, A.-B., Gachet, S. and Daniel, H. (2009) On the challenge of treating various types of variables: Application for improving the measurement of functional diversity. Oikos, 118, 391–402.
+distMatrix <- dist.ktab(ktab1, c("C", "O", "Q"), option="scaledBYrange")
+
+###########################################################################
+## Run Agglomorative Heirarchical Clustering
+###########################################################################
+### Name cluster method and create folder for results
+cluster_method <- "heir_agglom"
+
+### Create folder to save results in
+save_folder <- file.path(write_output_base_path, "clustering")
+save_folder <- file.path(save_folder, cluster_method)
+dir.create(save_folder, recursive=TRUE, showWarnings=FALSE)
+
+##  Calculate agglomerative clustering
+hclust_result <- hclust (d=distMatrix, method='ward.D2')
+	
+###########################################################################
+## Determine clusters
+###########################################################################	
+clusters_df <- calc_clusters(clustering_tree=hclust_result, cluster.list = cluster.list)
+
+### Separate cluster results
+clusters <- clusters_df$clust
+cluster_goodness <- clusters_df$goodness
+
+### Plot goodness of fit
+dir.create(file.path(save_folder, "clusters"), showWarnings=FALSE)
+p <- plot_cluster_goodness(cluster_goodness=cluster_goodness, save_directory=save_folder) 
+
+### Create master dataframe with cluster information
+cluster_event_df <- cbind(data_clustering,clusters)
+
+### Save cluster information
+write.csv(cluster_event_df, file.path(save_folder, "clusters/cluster_df.csv"), row.names=FALSE)
+write.csv(cluster_goodness, file.path(save_folder, "clusters/cluster_goodness.csv"), row.names=FALSE)
+
+###########################################################################
+## Plot Clusters
+###########################################################################
+for (k in cluster.list) {
+	p <- plot_clusters(plot_df=cluster_event_df, k=k, save_directory=save_folder)
+}
+
+###########################################################################
+## Plot Dendrogram
+###########################################################################
+### Loop through each of the cluster numbers
+for (k in cluster.list) {
+	p <- plot_dendrogram(clustering_tree=hclust_result, k=k, save_directory=save_folder, yscale=c(-0.2,2, 0.2, 2.05), label_offsets=c(0,-0.2,-0.4))
+}
+
+cluster_event_df$k_6 <- as.character(cluster_event_df$k_6)
+cluster_event_df %>%
+  group_by(k_6) %>%
+  summarize(avg_min_perc = mean(min_perc))
+ 
+ggplot(cluster_event_df, aes(x=k_6, y=min_perc)) + geom_boxplot() + geom_jitter(width = 0.2) + theme_classic_new()
+
+yup <- cluster_event_df %>%
+	mutate(cluster = k_6) %>%
+   select(-begin, -end, -data, -starts_with("k_")) %>%
+   gather(variable, value, -cluster)
+
+yup$variable <- factor(yup$variable, levels=colnames(cluster_event_df))
+  
+ggplot(yup, aes(x=cluster, y=value)) + geom_boxplot() + geom_jitter(width = 0.2, aes(colour=cluster), alpha=0.5) + theme_classic_new() + facet_wrap(~ variable, scales="free")
+  
+  
+###########################################################################
+## Create Parallel Coordinates Plot
+###########################################################################
+### Prepare data for plot
+rownames(cluster_event_df) <- cluster_event_df$begin
+
+### Only works up to 10 clusters 
+plot_par_coord(full_cluster_df=plot_data, k=6)
+
+### 9 is also good
+plot_par_coord(full_cluster_df=plot_data, k=9)
+
+### Run 12
+plot_data <- data.frame(cluster=cluster_event_df$k_12, cluster_event_df[,c(seq(3,13), 15, 14, 16)])
+plot_data <- plot_data[complete.cases(plot_data),]
+
+### Create plot
+parcoords(plot_data, reorderable = TRUE, brushMode = "1D-axes-multi",rownames = F, width=2000,alphaOnBrushed=0.2, color="#000000"
+)
+
+### Run 15
+plot_data <- data.frame(cluster=cluster_event_df$k_15, cluster_event_df[,c(seq(3,13), 15, 14, 16)])
+plot_data <- plot_data[complete.cases(plot_data),]
+
+### Create plot
+parcoords(plot_data, reorderable = TRUE, brushMode = "1D-axes-multi",rownames = F, width=2000,alphaOnBrushed=0.2, color="#000000"
+)
+
+
+###########################################################################
+## Find Centroid
+###########################################################################
+year_only <- as.numeric(substr(rownames(clusters),1,4))
+### Choose 1920 to capture the dust bowl years
+obs_test <- year_only >= 1920
+pre_test <- year_only < 1920
+
+### 6 Cluster solution
+sapply(unique(clusters[,5]), clust.medoid, as.matrix(distMatrix), clusters[,5])
+
+### Post 1920 and Pre 1920 clusters
+sapply(unique(clusters[obs_test,5]), clust.medoid, as.matrix(distMatrix)[obs_test,obs_test], clusters[obs_test,5])
+sapply(unique(clusters[pre_test,5]), clust.medoid, as.matrix(distMatrix)[pre_test,pre_test], clusters[pre_test,5])
+
+
+###########################################################################
+## Run Divisive Heirarchical Clustering
+###########################################################################
+### Name cluster method and create folder for results
+cluster_method <- "heir_divis"
+
+### Create folder to save results in
+save_folder <- file.path(write_output_path, cluster_method)
+dir.create(save_folder, showWarnings=FALSE)
+
+##  Calculate divisive clustering
+dv <- diana(x=distMatrix, diss=TRUE, stand=FALSE)
+hclust_result <- as.hclust(dv)
+	
+###########################################################################
+## Determine clusters
+###########################################################################	
+clusters_df <- calc_clusters(clustering_tree=hclust_result, cluster.list = cluster.list)
+
+### Separate cluster results
+clusters <- clusters_df$clust
+cluster_goodness <- clusters_df$goodness
+
+### Plot goodness of fit
+dir.create(file.path(save_folder, "clusters"), showWarnings=FALSE)
+p <- plot_cluster_goodness(cluster_goodness=cluster_goodness, save_directory=save_folder) 
+
+### Create master dataframe with cluster information
+cluster_event_df <- cbind(drought_event_df,clusters)
+
+### Save cluster information
+write.csv(cluster_event_df, file.path(save_folder, "clusters/cluster_df.csv"), row.names=FALSE)
+write.csv(cluster_goodness, file.path(save_folder, "clusters/cluster_goodness.csv"), row.names=FALSE)
+
+###########################################################################
+## Plot Clusters
+###########################################################################
+for (k in cluster.list) {
+	p <- plot_clusters(plot_df=cluster_event_df, k=k, save_directory=save_folder)
+}
+
+
+###########################################################################
+## Plot Dendrogram
+###########################################################################
+### Loop through each of the cluster numbers
+for (k in cluster.list) {
+	p <- plot_dendrogram(clustering_tree=hclust_result, k=k, save_directory=save_folder, yscale=c(-0.05,0.55, 0.05, 0.57), label_offsets=c(0,-0.06,-0.12))
+}
+
+###########################################################################
+## Create Parallel Coordinates Plot
+###########################################################################
+### Peak at 7 clusters, 9, 13
+
+### Prepare data for plot
+rownames(cluster_event_df) <- cluster_event_df$begin
+
+### Only works up to 10 clusters 
+plot_par_coord(full_cluster_df=plot_data, k=8)
+
+### 9 is also good
+plot_par_coord(full_cluster_df=plot_data, k=9)
+
+### 10 is also good
+plot_par_coord(full_cluster_df=plot_data, k=10)
+
+### Run 15
+plot_data <- data.frame(cluster=cluster_event_df$k_15, cluster_event_df[,c(seq(3,13), 15, 14, 16)])
+plot_data <- plot_data[complete.cases(plot_data),]
+
+### Create plot
+parcoords(plot_data, reorderable = TRUE, brushMode = "1D-axes-multi",rownames = F, width=2000,alphaOnBrushed=0.2, color="#000000"
+)
+
+
+### Run 15
+plot_data <- data.frame(cluster=cluster_event_df$k_15, cluster_event_df[,c(seq(3,13), 15, 14, 16)])
+plot_data <- plot_data[complete.cases(plot_data),]
+
+### Create plot
+parcoords(plot_data, reorderable = TRUE, brushMode = "1D-axes-multi",rownames = F, width=2000,alphaOnBrushed=0.2, color="#000000"
+)
+
+
+
+
+
+
+
+
+
+
 
 
 ###########################################################################
@@ -230,39 +472,59 @@ ggplot(subset(drought_event_system, response=="Base"), aes(x=dura_months/12, y=m
 ###########################################################################
 ###  Prepare to cluster
 ###########################################################################
-### Select columns to retain (everything to the right of response column)
-response_column <- which(names(drought_event_system) == "response")
-select_columns <- seq(response_column + 1, dim(drought_event_system)[2])
 
+### Cut to only paleoclimate and observed
+drought_event_allcols <- subset(drought_event_summary, data=="paleo" | data=="observed")
 ### Extract data for clustering
-data_clustering <- drought_event_system %>% 
-	filter(data %in% c("observed", "paleo")) %>%
-	filter(response == "Base") %>%
-	#arrange(begin) # %>%
-	select(select_columns)
+row.names(drought_event_allcols) <- paste0(substr(drought_event_allcols$begin,1,7), "_",drought_event_allcols$data)
+ 
+data_clustering <- drought_event_allcols[,seq(3,16)]
 
-head(data_clustering)
-tail(data_clustering)
+
 
 ###########################################################################
 ## Calculate Distance Matrix
 ###########################################################################
-### Create distance matrix
-scaled_data <- scale(data_clustering)
-rownames(scaled_data) <- seq(1,dim(data_clustering)[1])
+### Handle Circular variables
+data_circ <- data_clustering[,c(2,3)]
+data_circ <- prep.circular(data_circ, c(1,1), c(12,12))
 
-distMatrix <- dist(scaled_data, method="euclidean")
+### Handle Ordinal variables
+data_ord <- data.frame(data_clustering[,c(1)])
+
+### Handle Quantitative variables
+data_quant <- data_clustering[,seq(4,dim(data_clustering)[2])]  #dim(data_clustering)[2] #[,seq(1,5)]
+
+### Create distance matrix
+ktab1 <- ktab.list.df(list(data_ord, data_quant))  #data_circ, 
+### Apply Gowers distance to a mix of circular, ordinal, and quantitative columns
+### Scale each column by range before calculating distances
+### Apply the method of Pavoine S., Vallet, J., Dufour, A.-B., Gachet, S. and Daniel, H. (2009) On the challenge of treating various types of variables: Application for improving the measurement of functional diversity. Oikos, 118, 391–402.
+distMatrix <- dist.ktab(ktab1, c("O", "Q"), option="scaledBYrange")  #"C", 
+
+
+### Handle Quantitative variables
+data_quant <- data_clustering[,seq(4,5)]  #dim(data_clustering)[2] #[,seq(1,5)]
+
+### Create distance matrix
+ktab1 <- ktab.list.df(list(data_ord, data_quant))  #data_circ, 
+### Apply Gowers distance to a mix of circular, ordinal, and quantitative columns
+### Scale each column by range before calculating distances
+### Apply the method of Pavoine S., Vallet, J., Dufour, A.-B., Gachet, S. and Daniel, H. (2009) On the challenge of treating various types of variables: Application for improving the measurement of functional diversity. Oikos, 118, 391–402.
+distMatrix <- dist.ktab(ktab1, c("O", "Q"), option="scaledBYrange")  #"C", 
+
+
+
 
 ###########################################################################
 ## Run Agglomorative Heirarchical Clustering
 ###########################################################################
 ### Name cluster method and create folder for results
-cluster_method <- "heir_agglom_storage_delivery"
-	
+cluster_method <- "heir_agglom"
+
 ### Create folder to save results in
-save_folder <- file.path(write_output_base_path, "clustering")
-save_folder <- file.path(save_folder, cluster_method)
-dir.create(save_folder, recursive=TRUE, showWarnings=FALSE)
+save_folder <- file.path(write_output_base_path, cluster_method)
+dir.create(save_folder, showWarnings=FALSE)
 
 ##  Calculate agglomerative clustering
 hclust_result <- hclust (d=distMatrix, method='ward.D2')
@@ -270,7 +532,7 @@ hclust_result <- hclust (d=distMatrix, method='ward.D2')
 ###########################################################################
 ## Determine clusters
 ###########################################################################	
-clusters_df <- calc_clusters(clustering_tree=hclust_result, cluster.list = cluster.list)
+clusters_df <- calc_clusters(clustering_tree=hclust_result, cluster.list = cluster.list, drought_df=drought_event_allcols)
 
 ### Separate cluster results
 clusters <- clusters_df$clust
@@ -281,7 +543,8 @@ dir.create(file.path(save_folder, "clusters"), showWarnings=FALSE)
 p <- plot_cluster_goodness(cluster_goodness=cluster_goodness, save_directory=save_folder) 
 
 ### Create master dataframe with cluster information
-cluster_event_df <- cbind(data_clustering,clusters)
+cluster_event_df <- cbind(drought_event_allcols,clusters)
+
 
 ### Save cluster information
 write.csv(cluster_event_df, file.path(save_folder, "clusters/cluster_df.csv"), row.names=FALSE)
@@ -309,53 +572,6 @@ for (k in cluster.list) {
 
 
 ####### A different approach
-## generate 25 objects, divided into 2 clusters.
-require(factoextra)
-fviz_nbclust(scaled_data, pam, method = "wss", diss=distMatrix) +
-  geom_vline(xintercept = 3, linetype = 2)
-  
-  
- fviz_nbclust(scaled_data, pam, method = "silhouette", diss=distMatrix) +
-  geom_vline(xintercept = 3, linetype = 2) 
-  
-  
- fviz_nbclust(scaled_data, pam, method = "gap_stat", diss=distMatrix) +
-  geom_vline(xintercept = 3, linetype = 2) 
-  
-  
-  
-#yup <- pam(data_clustering, k=6, diss=FALSE, stand=TRUE)
-yup <- pam(distMatrix, k=5, diss=TRUE, stand=FALSE)
-
-sil = silhouette (yup$clustering, distMatrix)
-plot(sil)
-
-
-summary(yup)
-
-plot(yup$data, col = yup$clustering)
-points(yup$medoids, col = 1:2, pch = 4)
-
-plot (yup$data, col = yup$clustering)
-#add the medoids to the plot
-points(yup$medoids, col = 1:3, pch = 4)
-
-
-
-cluster_results <- data_clustering
-cluster_results$cluster <- yup$clustering
-
-toplot <- cluster_results %>%
-   gather(variable, value, -cluster)
-
-toplot$variable <- factor(toplot$variable, levels=colnames(cluster_results))
-toplot$cluster <- factor(toplot$cluster)
-  
-ggplot(toplot, aes(x=cluster, y=value)) + geom_boxplot() + geom_jitter(width = 0.2, aes(colour=cluster), alpha=0.5) + theme_classic_new() + facet_wrap(~ variable, scales="free")
-  
-
-
-,dis)
 
 
 
