@@ -57,6 +57,21 @@ write_output_base_path <- file.path(weber_output_path, output_name)
 dir.create(write_output_base_path)
 
 ###########################################################################
+###  Load functions
+###########################################################################
+### Load these functions for all code
+require(colorout)
+require(assertthat)
+
+### Load these functions for this unique project
+require(ggplot2)
+require(staggefuncs)
+require(lubridate)
+require(reshape2)
+require(scales)
+require(tidyverse)
+
+###########################################################################
 ## Open Output File
 ###########################################################################
 load(file.path(weber_output_path, "weber_storage_output.RData"))
@@ -338,12 +353,9 @@ ggsave(file.path(plot_location,paste0("stor_timeseries_percent_hd_", region_i, "
 }
 
 
-
-
-
-
-
-
+###########################################################################
+## This doesn't do anything, consider deleting
+###########################################################################
 
 names(perc_plot)[2:9] <- as.character(total_storage$Name)
 yup <-  melt(perc_plot, id.vars = c("date", "month", "year", "wy", "data"))
@@ -367,8 +379,8 @@ p <- p + facet_wrap(~variable, nrow = 4)
 p
 
 ### Save figures
-ggsave(file.path(storage_output_path,"paleo_future_stor_perc.png"),  p, width=11, height=9, dpi=300)
-ggsave(file.path(storage_output_path,"paleo_future_stor_perc.pdf"),  p, width=11, height=9)
+#ggsave(file.path(storage_output_path,"paleo_future_stor_perc.png"),  p, width=11, height=9, dpi=300)
+#ggsave(file.path(storage_output_path,"paleo_future_stor_perc.pdf"),  p, width=11, height=9)
 
 
 
@@ -393,7 +405,7 @@ p <- p + geom_area()
 p <- p + geom_area(data=subset(area_region, data=="paleo" & date < as.Date("1980-10-01")))
 p <- p + geom_area(data=subset(area_region, data=="hd"))
 p <- p + geom_area(data=subset(area_region, data=="base"), aes(x=base_date))
-p <- p + geom_line(data=trigger_plot, aes(y=res_stor/1000, group=trigger_level, fill=NA), colour="grey30", linetype="longdash", size=0.5)
+p <- p + geom_line(data=trigger_plot, aes(y=res_stor/1000, group=trigger_level, fill=NA), colour="grey30", linetype="longdash", size=0.35)
 p <- p + theme_classic_new()
 p <- p + scale_fill_manual(name="Region", values= res_colors[c(1,3,2)], labels=c("Upper Ogden", "Upper Weber", "Lower Weber"), breaks=c("upper_ogden", "upper_weber", "lower"), guide = guide_legend())
 p <- p + coord_cartesian(xlim=c(as.Date("1425-01-01"), as.Date("2070-01-01")), expand=FALSE)
@@ -441,7 +453,7 @@ p <- p + stat_smooth(geom = 'area', method = 'loess', span = 1/30, position='sta
 p <- p + geom_area(data=subset(area_region, data=="paleo" & date < as.Date("1980-10-01")))
 p <- p + geom_area(data=subset(area_region, data=="hd"))
 p <- p + geom_area(data=subset(area_region, data=="base"), aes(x=base_date))
-p <- p + geom_line(data=trigger_plot, aes(y=res_stor/1000, group=trigger_level, fill=NA), colour="grey30", linetype="longdash", size=0.5)
+p <- p + geom_line(data=trigger_plot, aes(y=res_stor/1000, group=trigger_level, fill=NA), colour="grey30", linetype="longdash", size=0.35)
 p <- p + theme_classic_new()
 p <- p + scale_fill_manual(name="Region", values= res_colors[c(1,3,2)], labels=c("Upper Ogden", "Upper Weber", "Lower Weber"), breaks=c("upper_ogden", "upper_weber", "lower"), guide = guide_legend())
 p <- p + coord_cartesian(xlim=c(as.Date("1425-01-01"), as.Date("2070-01-01")), expand=FALSE)

@@ -239,7 +239,7 @@ stor_percent <- stor_all
 res_test <- names(stor_percent) %in% paste0("res_", seq(1,10))
 
 ### Divide each reservoir by its total storage
-stor_percent[,res_test] <- sweep(stor_percent[,res_test], 2, c(total_storage$Total, NA, NA), "/")
+stor_percent[,res_test] <- sweep(stor_all[,res_test], 2, c(total_storage$Total, NA, NA), "/")
 
 ### Divide for total system storage
 stor_percent$total_res <- stor_percent$total_res / sum(total_storage$Total, na.rm=TRUE)
@@ -313,8 +313,8 @@ stor_all$lower <- stor_all %>%
 #stor_all$system_def <- max_stor - stor_all$total_res
 
 ### Calculate storage percent by region
-stor_percent$upper_ogden <- stor_all$upper_ogden / sum(total_storage$Total[seq(1,5)], na.rm=TRUE)
-stor_percent$upper_weber <- stor_all$upper_weber / sum(total_storage$Total[seq(6,7)], na.rm=TRUE)
+stor_percent$upper_ogden <- stor_all$upper_ogden / sum(total_storage$Total[seq(6,7)], na.rm=TRUE)
+stor_percent$upper_weber <- stor_all$upper_weber / sum(total_storage$Total[seq(1,5)], na.rm=TRUE)
 stor_percent$lower <- stor_all$lower  / sum(total_storage$Total[seq(8,10)], na.rm=TRUE)
 
 
