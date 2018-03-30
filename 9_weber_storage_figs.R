@@ -503,19 +503,36 @@ ggsave(file.path(plot_location,paste0("stor_byregion_timeseries_percent_hd_facet
 ###########################################################################
 ## Plot Shortage Time Series
 ###########################################################################
-plot_test <- stor_all$data %in% c("observed", "paleo")
+### Need to fix the climate change run
 
-cc_test <- stor_all$data %in% c("base", "hd", "hw", "wd", "ww")
-cc_df <- stor_all[cc_test,]
+area_df <- stor_all %>% 
+	filter(data %in% c("paleo", "observed", "base", "response", "hd")) %>%
+	select(date, base_date, data, response, upper_ogden, upper_weber, lower) %>%
+	gather(res, value, c("upper_ogden", "upper_weber", "lower"))
+
+area_df <- stor_all  %>% 
+	filter(data %in% c("paleo", "observed", "hd"))
+
+area_df2 <- stor_all  %>% 
+	filter(data %in% c("base")) %>%
+	mutate(date = base_date)
+
+area_df <- rbind(area_df, area_df)
+area_plot <- area_df %>% 
+		filter(response == "Base")
+		
+#plot_test <- stor_all$data %in% c("observed", "paleo")
+#cc_test <- stor_all$data %in% c("base", "hd", "hw", "wd", "ww")
+#cc_df <- stor_all[cc_test,]
 
 #plot_df <- rbind(stor_all[plot_test,], cc_df[cc_df$data %in% c("base", "HDN5"),])
 
-base_df <- cc_df[cc_df$data %in% c("base"),]
-base_df$data <- factor("observed", levels="observed")
+#base_df <- cc_df[cc_df$data %in% c("base"),]
+#base_df$data <- factor("observed", levels="observed")
 
-area_df <- rbind(cc_df[cc_df$data %in% c("hd", "hw"),], stor_all[stor_all$data %in% c("paleo", "observed"),])
+#area_df <- rbind(cc_df[cc_df$data %in% c("hd", "hw"),], stor_all[stor_all$data %in% c("paleo", "observed"),])
 
-p <- ggplot(area_df, aes(x=date, y=-system_def/1000, fill=data))
+p <- ggplot(area_plot, aes(x=date, y=-total_res_deficit/1000, fill=data))
 p <- p + geom_area( position = "identity", alpha=0.8)
 p <- p + geom_hline(yintercept=0, size=0.2)
 p <- p + geom_hline(yintercept=-max_stor/1000, size=0.4, colour="black", linetype="longdash")
@@ -526,7 +543,7 @@ p <- p + theme_classic_new()
 p <- p + scale_fill_manual(name="Scenario", values= c("#D55E00", "#56B4E9", "grey30", "#CC79A7"), labels=c("HD", "HW", "Observed", "Reconstr"), guide = guide_legend())
 #p <- p + coord_cartesian(xlim=c(as.Date("1920-01-01"), as.Date("2018-01-01")))
 p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="50 years"), date_labels = "%Y")
-p <- p + scale_y_continuous(name="System Storage Deficit (1,000 ac-ft)", breaks=seq(-10000,500,50))
+p <- p + scale_y_continuous(name="System Storage Volume Below Moderate Trigger (1,000 ac-ft)", breaks=seq(-10000,500,50))
 p <- p + theme(legend.position="bottom")
 p
 
@@ -1023,4 +1040,22 @@ trig_occur <- cbind(trig_occur, total_time_steps)
 write.csv(trig_prop , file.path(write_output_base_path,"trigger_proportion.csv") )
 write.csv(trig_occur , file.path(write_output_base_path,"trigger_occur.csv") )
 write.csv(chi_p , file.path(write_output_base_path,"trigger_chi_p.csv") )
+
+
+
+
+
+
+##################################################################
+### Hashimoto figures
+##################################################################
+
+p <- ggplot(subset(hash_stor, response=="Base"), aes(x=reliability, y=resilience, color=vulnerability, shape=data))
+p <- p + geom_point(size=6)
+p <- p + scale_shape_manual(values=c(16,17, 15, 0, 3, 2, 7))
+#p <- p + scale_colour_viridis(direction=-1, option="plasma")
+#p <- p + scale_colour_distiller(type = "seq", palette = "YlOrRd", direction=1)
+p <- p + scale_colour_gradient(low="#feb24c", high="#800026")
+p <- p + theme_classic_correct()
+p
 

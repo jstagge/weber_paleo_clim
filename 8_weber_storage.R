@@ -71,6 +71,11 @@ require(reshape2)
 require(scales)
 require(tidyverse)
 
+
+### Load project specific functions
+file.sources = list.files(function_path, pattern="*.R", recursive=TRUE)
+sapply(file.path(function_path, file.sources),source)
+
 ###########################################################################
 ## Set Initial Values
 ###########################################################################
@@ -343,11 +348,13 @@ severe_trigger <- trigger_df$trigger * 0.5
 extreme_trigger <- trigger_df$trigger * 0.25
 
 ### Calculate deficits 
+stor_all$total_res_deficit <- moderate_trigger - stor_all$total_res
 stor_all$moderate <- moderate_trigger - stor_all$total_res
 stor_all$severe <- severe_trigger - stor_all$total_res
 stor_all$extreme <- extreme_trigger - stor_all$total_res
 
 ### Clear all negative deficits (above threshold) 
+stor_all$total_res_deficit[stor_all$total_res_deficit < 0] <- 0
 stor_all$moderate[stor_all$moderate < 0] <- 0
 stor_all$severe[stor_all$severe < 0] <- 0
 stor_all$extreme[stor_all$extreme < 0] <- 0
@@ -379,6 +386,34 @@ stor_percent$precip <- stor_all$precip
 
 
 
+###########################################################################
+###  Hashimoto Vulnerability Calculation for all combinations
+###########################################################################
+### Create a dataframe with all possible combinations
+### Had to do it this way because observed is not in original scenario_df
+all_runs <- expand.grid(response=levels(stor_all$response), data=levels(stor_all$data))
+
+### Loop through all possible combinations and run Hashimoto vulnerability
+for (i in seq(1,dim(all_runs)[1])){
+	### Extract only the correct data and sort
+	stor_i <- stor_all %>% 
+		filter(data == all_runs$data[i] & response == all_runs$response[i]) %>%
+		dplyr::arrange(-dplyr::desc(date))
+
+	### Run Hashimoto function for demand and request storage
+	hash_temp_stor <- hash_perform(stor_i, shortage_col="total_res_deficit")
+	hash_temp_stor <- data.frame(all_runs[i,], short_type="stor_moderate_trigger", hash_temp_stor)
+	
+	### Combine the results
+	if (i == 1){
+		hash_stor <- hash_temp_stor
+	} else {
+		hash_stor <- rbind(hash_stor, hash_temp_stor)
+	}
+}
+
+### Catch if there are no failures
+hash_stor$resilience[hash_stor$reliability == 1] <- 1
 
 ###########################################################################
 ## Save Workspace
