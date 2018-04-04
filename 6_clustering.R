@@ -187,7 +187,8 @@ hclust_result <- hclust (d=distMatrix, method='ward.D2')
 ###########################################################################
 ## Determine clusters
 ###########################################################################	
-clusters_df <- calc_clusters(clustering_tree=hclust_result, cluster.list = cluster.list, drought_df=drought_event_allcols)
+#clusters_df <- calc_clusters(clustering_tree=hclust_result, cluster.list = cluster.list, drought_df=drought_event_allcols)
+clusters_df <- calc_clusters(clustering_tree=hclust_result, cluster.list = cluster.list)
 
 ### Separate cluster results
 clusters <- clusters_df$clust

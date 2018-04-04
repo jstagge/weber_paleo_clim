@@ -90,6 +90,8 @@ dir.create(storage_output_path)
 cc_colors <- c("#0072B2", "#56B4E9", "#E69F00" , "#D55E00")
 data_colors <- c("#7fc97f", "grey40", "grey80", cc_colors)
 
+data_labels <- c( "Reconstructed", "Observed", "Base", "Climate Change (WW)", "Climate Change (HW)", "Climate Change (WD)", "Climate Change (HD)")
+
 ### Colors for triggers
 trigger_colors <- c("#f03b20",  "#feb24c", "#ffeda0")
 
@@ -153,37 +155,60 @@ ggsave(file.path(storage_output_path,"trigger_levels_perc.svg"),  p, width=4.5, 
 yup <- stor_all %>% 
 	filter(response == "Base")
 	
+yup_delete <- yup[1,]
+yup_delete$data <- "delete"
+yup_delete$total_res <- NA
+yup <- rbind(yup, yup_delete)
+yup$data <- factor(yup$data, levels=c(data_levels[seq(1,3)], "delete", data_levels[seq(4,7)]), labels=c(data_labels[seq(1,3)], "", data_labels[seq(4,7)]))
+
 p <- ggplot(yup, aes(x=month))
-p <- p + geom_line(aes(y=total_res, group=wy, colour=data), size=0.3)
-p <- p + facet_wrap(~data)
-p <- p + scale_colour_manual(name="Scenario", values=data_colors)
-p <- p + theme_classic_new()
+p <- p + geom_line(aes(y=total_res/1000, group=wy, colour=data), size=0.3)
+p <- p + scale_x_discrete(name="Month")
+p <- p + scale_y_continuous(name="Total System Storage (1,000 ac-ft)") 
+p <- p + facet_wrap(~data, nrow=2)
+p <- p + scale_colour_manual(name="Scenario", values=c(data_colors[seq(1,3)], "pink", data_colors[seq(4,7)]))
+p <- p + theme_classic_new() 
 p
 
+### Save figures
+ggsave(file.path(storage_output_path,"storage_bymonth_line.png"),  p, width=7.5, height=4, dpi=600)
 
-p <- ggplot(yup, aes(x=month, y=total_res, group=wy, colour=data))
+p <- ggplot(yup, aes(x=month, y=total_res/1000, group=wy, colour=data))
 p <- p + geom_line(size=0.3)
-p <- p + scale_colour_manual(name="Scenario", values=data_colors)
+p <- p + scale_colour_manual(name="Scenario", values=c(data_colors[seq(1,3)], "pink", data_colors[seq(4,7)]))
 p <- p + theme_classic_new()
 p
 
 p <- ggplot(yup, aes(x=month))
-p <- p + geom_boxplot(aes(y=total_res, colour=data), size=0.3)
-p <- p + facet_wrap(~data)
-p <- p + scale_colour_manual(name="Scenario", values=data_colors)
+p <- p + geom_boxplot(aes(y=total_res/1000, colour=data), size=0.3)
+p <- p + scale_x_discrete(name="Month")
+p <- p + scale_y_continuous(name="Total System Storage (1,000 ac-ft)") 
+p <- p + facet_wrap(~data, nrow=2)
+p <- p + scale_colour_manual(name="Scenario", values=c(data_colors[seq(1,3)], data_colors[seq(4,7)]))
 p <- p + theme_classic_new()
 p
+
+### Save figures
+ggsave(file.path(storage_output_path,"storage_bymonth_boxplot.png"),  p, width=7.5, height=4, dpi=600)
 
 p <- ggplot(yup, aes(x=month))
-p <- p + geom_boxplot(aes(y=total_res, colour=data), size=0.3)
-p <- p + scale_colour_manual(name="Scenario", values=data_colors)
+p <- p + geom_boxplot(aes(y=total_res/1000, fill=data), size=0.3, colour=NA, alpha=0.6)
+p <- p + geom_boxplot(aes(y=total_res/1000, colour=data), size=0.3, fill=NA)
+p <- p + scale_colour_manual(name="Scenario", values=c(data_colors[seq(1,3)], data_colors[seq(4,7)]))
+p <- p + scale_fill_manual(name="Scenario", values=c(data_colors[seq(1,3)], data_colors[seq(4,7)]))#, alpha=0.5)
+p <- p + scale_x_discrete(name="Month")
+p <- p + scale_y_continuous(name="Total System Storage (1,000 ac-ft)") 
 p <- p + theme_classic_new()
+p <- p + theme(legend.position="bottom")
+p <- p + guides(colour = guide_legend(nrow = 1), fill = guide_legend(nrow = 1))
 p
 
+### Save figures
+ggsave(file.path(storage_output_path,"storage_bymonth_boxplot_merge.png"),  p, width=7.5, height=4.5, dpi=600)
 
 
 p <- ggplot(stor_all, aes(x=date, fill=data))
-p <- p + geom_area(aes(y=total_res), size=0.3, position="identity")
+p <- p + geom_area(aes(y=total_res), size=0.3, position="identity", alpha=0.4)
 p <- p + theme_classic_new()
 p
 
@@ -200,6 +225,9 @@ p
 area_df <- stor_all %>% 
 	filter(data %in% c("paleo", "observed", "hd")) %>%
 	filter(response == "Base")
+	
+time_test <- area_df$data == "paleo" & area_df$year >= 1905
+area_df <- area_df[!time_test,]
 
 p <- ggplot(area_df, aes(x=date, y=total_res/1000, fill=data))
 p <- p + geom_area( position = "identity", alpha=0.8)
@@ -402,7 +430,8 @@ area_region$res <- factor(area_region$res, levels=c("upper_ogden", "upper_weber"
 p <- ggplot(subset(area_region, data=="observed"), aes(x=date, y=value/1000, fill=res))
 #p <- ggplot(yup, aes(x=date, y=value/1000, fill=variable))
 p <- p + geom_area()
-p <- p + geom_area(data=subset(area_region, data=="paleo" & date < as.Date("1980-10-01")))
+p <- p + geom_area(data=subset(area_region, data=="paleo" & date < as.Date("1905-01-01")))
+p <- p + geom_area(data=subset(area_region, data=="observed" & date >= as.Date("1905-01-01")))
 p <- p + geom_area(data=subset(area_region, data=="hd"))
 p <- p + geom_area(data=subset(area_region, data=="base"), aes(x=base_date))
 p <- p + geom_line(data=trigger_plot, aes(y=res_stor/1000, group=trigger_level, fill=NA), colour="grey30", linetype="longdash", size=0.35)
@@ -494,10 +523,6 @@ ggsave(file.path(plot_location,paste0("stor_byregion_timeseries_percent_hd_facet
 #p <- p + scale_y_continuous(name="System Storage (1,000 ac-ft)", breaks=seq(0,800,100))
 #p <- p + theme(legend.position="bottom")
 #p
-
-
-
-
 
 
 ###########################################################################
@@ -728,122 +753,6 @@ p
 
 
 
-###########################################################################
-## Plot drought events duration vs severity
-###########################################################################
-
-
-plot_df <- drought_event_summary[!is.na(drought_event_summary$system_min), ]
-plot_df_subset <- plot_df[plot_df$data %in% c("paleo", "observed", "hd"),]
-
-require(viridis)
-
-p <- ggplot(plot_df, aes(x=dura_months/12, y=min_perc*100, colour=system_min/1000))
-p <- p + geom_point(size=4)#, aes(shape=data))
-p <- p + scale_colour_viridis(direction=-1, option="plasma", name="Minimum\nStorage\n(1,000 ac-ft)")
-p <- p + theme_classic_new(12)
-p <- p + scale_x_continuous(name="Drought Duration (Years)", breaks=seq(0,30,1))
-p <- p + scale_y_continuous(name="Min Monthly Flow Percentile")
-p <- p + theme(legend.position = c(0.85, 0.75))
-p <- p + coord_cartesian(xlim = c(0.35,6.5), ylim = c(0,47), expand = TRUE)
-p
-
-### Save figures
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_system_storage.png"),  p, width=6.5, height=5, dpi=300)
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_system_storage.pdf"),  p, width=6.5, height=5)
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_system_storage.svg"),  p, width=6.5, height=5)
-
-p <- p + scale_colour_distiller(name="Minimum\nStorage\n(1,000 ac-ft)", type = "seq", palette = "Oranges", direction = -1)
-
-
-#p + scale_colour_distiller(name="Minimum\nStorage\n(1,000 ac-ft)", type = "seq", palette = "OrRd", direction = -1)
-#p + scale_colour_distiller(name="Minimum\nStorage\n(1,000 ac-ft)", type = "seq", palette = "OrRd", direction = -1)
-#p + scale_colour_distiller(name="Minimum\nStorage\n(1,000 ac-ft)", type = "seq", palette = "YlOrBr", direction = -1)
-#p + scale_colour_distiller(name="Minimum\nStorage\n(1,000 ac-ft)", type = "seq", palette = "YlOrRd", direction = -1)
-#p + scale_colour_distiller(name="Minimum\nStorage\n(1,000 ac-ft)", type = "seq", palette = "Oranges", direction = -1)
-#p + scale_colour_distiller(name="Minimum\nStorage\n(1,000 ac-ft)", type = "seq", palette = "Reds", direction = -1)
-
-### Save figures
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_system_storage_orange.png"),  p, width=6.5, height=5, dpi=300)
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_system_storage_orange.pdf"),  p, width=6.5, height=5)
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_system_storage_orange.svg"),  p, width=6.5, height=5)
-
-
-
-
-p <- ggplot(plot_df, aes(x=dura_months/12, y=min_perc*100, colour=upper_ogden_min/1000))
-p <- p + geom_point(size=4)#, aes(shape=data))
-p <- p + scale_colour_viridis(direction=-1, option="plasma", name="Minimum\nStorage\n(1,000 ac-ft)")
-p <- p + theme_classic_new(12)
-p <- p + scale_x_continuous(name="Drought Duration (Years)", breaks=seq(0,30,1))
-p <- p + scale_y_continuous(name="Min Monthly Flow Percentile")
-p <- p + theme(legend.position = c(0.85, 0.75))
-p <- p + coord_cartesian(xlim = c(0.35,6.5), ylim = c(0,47), expand = TRUE)
-p
-
-### Save figures
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_upper_ogden_storage.png"),  p, width=6.5, height=5, dpi=300)
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_upper_ogden_storage.pdf"),  p, width=6.5, height=5)
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_upper_ogden_storage.svg"),  p, width=6.5, height=5)
-
-p <- p + scale_colour_distiller(name="Minimum\nStorage\n(1,000 ac-ft)", type = "seq", palette = "Oranges", direction = -1)
-
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_upper_ogden_storage_orange.png"),  p, width=6.5, height=5, dpi=300)
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_upper_ogden_storage_orange.pdf"),  p, width=6.5, height=5)
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_upper_ogden_storage_orange.svg"),  p, width=6.5, height=5)
-
-
-
-p <- ggplot(plot_df, aes(x=dura_months/12, y=min_perc*100, colour=upper_weber_min/1000))
-p <- p + geom_point(size=4)#, aes(shape=data))
-p <- p + scale_colour_viridis(direction=-1, option="plasma", name="Minimum\nStorage\n(1,000 ac-ft)")
-p <- p + theme_classic_new(12)
-p <- p + scale_x_continuous(name="Drought Duration (Years)", breaks=seq(0,30,1))
-p <- p + scale_y_continuous(name="Min Monthly Flow Percentile")
-p <- p + theme(legend.position = c(0.85, 0.75))
-p <- p + coord_cartesian(xlim = c(0.35,6.5), ylim = c(0,47), expand = TRUE)
-p
-
-### Save figures
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_upper_weber_storage.png"),  p, width=6.5, height=5, dpi=300)
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_upper_weber_storage.pdf"),  p, width=6.5, height=5)
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_upper_weber_storage.svg"),  p, width=6.5, height=5)
-
-p <- p + scale_colour_distiller(name="Minimum\nStorage\n(1,000 ac-ft)", type = "seq", palette = "Oranges", direction = -1)
-
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_upper_weber_storage_orange.png"),  p, width=6.5, height=5, dpi=300)
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_upper_weber_storage_orange.pdf"),  p, width=6.5, height=5)
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_upper_weber_storage_orange.svg"),  p, width=6.5, height=5)
-
-
-
-
-p <- ggplot(plot_df, aes(x=dura_months/12, y=min_perc*100, colour=lower_min/1000))
-p <- p + geom_point(size=4)#, aes(shape=data))
-p <- p + scale_colour_viridis(direction=-1, option="plasma", name="Minimum\nStorage\n(1,000 ac-ft)")
-p <- p + theme_classic_new(12)
-p <- p + scale_x_continuous(name="Drought Duration (Years)", breaks=seq(0,30,1))
-p <- p + scale_y_continuous(name="Min Monthly Flow Percentile")
-p <- p + theme(legend.position = c(0.85, 0.75))
-p <- p + coord_cartesian(xlim = c(0.35,6.5), ylim = c(0,47), expand = TRUE)
-p
-
-### Save figures
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_lower_storage.png"),  p, width=6.5, height=5, dpi=300)
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_lower_storage.pdf"),  p, width=6.5, height=5)
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_lower_storage.svg"),  p, width=6.5, height=5)
-
-p <- p + scale_colour_distiller(name="Minimum\nStorage\n(1,000 ac-ft)", type = "seq", palette = "Oranges", direction = -1)
-
-### Save figures
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_lower_storage_orange.png"),  p, width=6.5, height=5, dpi=300)
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_lower_storage_orange.pdf"),  p, width=6.5, height=5)
-ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_lower_storage_orange.svg"),  p, width=6.5, height=5)
-
-
-
-
-
 
 
 
@@ -1058,4 +967,134 @@ p <- p + scale_shape_manual(values=c(16,17, 15, 0, 3, 2, 7))
 p <- p + scale_colour_gradient(low="#feb24c", high="#800026")
 p <- p + theme_classic_correct()
 p
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+###########################################################################
+## Plot drought events duration vs severity
+###########################################################################
+
+
+plot_df <- drought_event_summary[!is.na(drought_event_summary$system_min), ]
+plot_df_subset <- plot_df[plot_df$data %in% c("paleo", "observed", "hd"),]
+
+require(viridis)
+
+p <- ggplot(plot_df, aes(x=dura_months/12, y=min_perc*100, colour=system_min/1000))
+p <- p + geom_point(size=4)#, aes(shape=data))
+p <- p + scale_colour_viridis(direction=-1, option="plasma", name="Minimum\nStorage\n(1,000 ac-ft)")
+p <- p + theme_classic_new(12)
+p <- p + scale_x_continuous(name="Drought Duration (Years)", breaks=seq(0,30,1))
+p <- p + scale_y_continuous(name="Min Monthly Flow Percentile")
+p <- p + theme(legend.position = c(0.85, 0.75))
+p <- p + coord_cartesian(xlim = c(0.35,6.5), ylim = c(0,47), expand = TRUE)
+p
+
+### Save figures
+ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_system_storage.png"),  p, width=6.5, height=5, dpi=300)
+ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_system_storage.pdf"),  p, width=6.5, height=5)
+ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_system_storage.svg"),  p, width=6.5, height=5)
+
+p <- p + scale_colour_distiller(name="Minimum\nStorage\n(1,000 ac-ft)", type = "seq", palette = "Oranges", direction = -1)
+
+
+#p + scale_colour_distiller(name="Minimum\nStorage\n(1,000 ac-ft)", type = "seq", palette = "OrRd", direction = -1)
+#p + scale_colour_distiller(name="Minimum\nStorage\n(1,000 ac-ft)", type = "seq", palette = "OrRd", direction = -1)
+#p + scale_colour_distiller(name="Minimum\nStorage\n(1,000 ac-ft)", type = "seq", palette = "YlOrBr", direction = -1)
+#p + scale_colour_distiller(name="Minimum\nStorage\n(1,000 ac-ft)", type = "seq", palette = "YlOrRd", direction = -1)
+#p + scale_colour_distiller(name="Minimum\nStorage\n(1,000 ac-ft)", type = "seq", palette = "Oranges", direction = -1)
+#p + scale_colour_distiller(name="Minimum\nStorage\n(1,000 ac-ft)", type = "seq", palette = "Reds", direction = -1)
+
+### Save figures
+ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_system_storage_orange.png"),  p, width=6.5, height=5, dpi=300)
+ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_system_storage_orange.pdf"),  p, width=6.5, height=5)
+ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_system_storage_orange.svg"),  p, width=6.5, height=5)
+
+
+
+
+p <- ggplot(plot_df, aes(x=dura_months/12, y=min_perc*100, colour=upper_ogden_min/1000))
+p <- p + geom_point(size=4)#, aes(shape=data))
+p <- p + scale_colour_viridis(direction=-1, option="plasma", name="Minimum\nStorage\n(1,000 ac-ft)")
+p <- p + theme_classic_new(12)
+p <- p + scale_x_continuous(name="Drought Duration (Years)", breaks=seq(0,30,1))
+p <- p + scale_y_continuous(name="Min Monthly Flow Percentile")
+p <- p + theme(legend.position = c(0.85, 0.75))
+p <- p + coord_cartesian(xlim = c(0.35,6.5), ylim = c(0,47), expand = TRUE)
+p
+
+### Save figures
+ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_upper_ogden_storage.png"),  p, width=6.5, height=5, dpi=300)
+ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_upper_ogden_storage.pdf"),  p, width=6.5, height=5)
+ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_upper_ogden_storage.svg"),  p, width=6.5, height=5)
+
+p <- p + scale_colour_distiller(name="Minimum\nStorage\n(1,000 ac-ft)", type = "seq", palette = "Oranges", direction = -1)
+
+ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_upper_ogden_storage_orange.png"),  p, width=6.5, height=5, dpi=300)
+ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_upper_ogden_storage_orange.pdf"),  p, width=6.5, height=5)
+ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_upper_ogden_storage_orange.svg"),  p, width=6.5, height=5)
+
+
+
+p <- ggplot(plot_df, aes(x=dura_months/12, y=min_perc*100, colour=upper_weber_min/1000))
+p <- p + geom_point(size=4)#, aes(shape=data))
+p <- p + scale_colour_viridis(direction=-1, option="plasma", name="Minimum\nStorage\n(1,000 ac-ft)")
+p <- p + theme_classic_new(12)
+p <- p + scale_x_continuous(name="Drought Duration (Years)", breaks=seq(0,30,1))
+p <- p + scale_y_continuous(name="Min Monthly Flow Percentile")
+p <- p + theme(legend.position = c(0.85, 0.75))
+p <- p + coord_cartesian(xlim = c(0.35,6.5), ylim = c(0,47), expand = TRUE)
+p
+
+### Save figures
+ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_upper_weber_storage.png"),  p, width=6.5, height=5, dpi=300)
+ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_upper_weber_storage.pdf"),  p, width=6.5, height=5)
+ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_upper_weber_storage.svg"),  p, width=6.5, height=5)
+
+p <- p + scale_colour_distiller(name="Minimum\nStorage\n(1,000 ac-ft)", type = "seq", palette = "Oranges", direction = -1)
+
+ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_upper_weber_storage_orange.png"),  p, width=6.5, height=5, dpi=300)
+ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_upper_weber_storage_orange.pdf"),  p, width=6.5, height=5)
+ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_upper_weber_storage_orange.svg"),  p, width=6.5, height=5)
+
+
+
+
+p <- ggplot(plot_df, aes(x=dura_months/12, y=min_perc*100, colour=lower_min/1000))
+p <- p + geom_point(size=4)#, aes(shape=data))
+p <- p + scale_colour_viridis(direction=-1, option="plasma", name="Minimum\nStorage\n(1,000 ac-ft)")
+p <- p + theme_classic_new(12)
+p <- p + scale_x_continuous(name="Drought Duration (Years)", breaks=seq(0,30,1))
+p <- p + scale_y_continuous(name="Min Monthly Flow Percentile")
+p <- p + theme(legend.position = c(0.85, 0.75))
+p <- p + coord_cartesian(xlim = c(0.35,6.5), ylim = c(0,47), expand = TRUE)
+p
+
+### Save figures
+ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_lower_storage.png"),  p, width=6.5, height=5, dpi=300)
+ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_lower_storage.pdf"),  p, width=6.5, height=5)
+ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_lower_storage.svg"),  p, width=6.5, height=5)
+
+p <- p + scale_colour_distiller(name="Minimum\nStorage\n(1,000 ac-ft)", type = "seq", palette = "Oranges", direction = -1)
+
+### Save figures
+ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_lower_storage_orange.png"),  p, width=6.5, height=5, dpi=300)
+ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_lower_storage_orange.pdf"),  p, width=6.5, height=5)
+ggsave(file.path(write_output_base_path,"drought_perc_vs_duration_lower_storage_orange.svg"),  p, width=6.5, height=5)
+
+
 

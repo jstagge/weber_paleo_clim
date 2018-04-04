@@ -104,7 +104,7 @@ m3_to_acft <- 1233.4818
 
 ### List of drought responses and data sources
 drought_response_list <- c("Base", "ChalkCreekRes", "DemandManagement", "GravelPitRes")
-data_list <- c("paleo", "base", "ww", "hw", "wd", "hd")
+data_list <- c("paleo", "observed", "base", "ww", "hw", "wd", "hd")
 
 ###########################################################################
 ###  Read in Data
@@ -137,7 +137,7 @@ scenario_df <- expand.grid(response=drought_response_list, data=data_list)
 ### Create a column for base folders
 scenario_df <- scenario_df %>%
        mutate(base_folder = case_when(
-           data == "paleo" ~ "Paleo",
+           data == "paleo" | data == "observed" ~ "Paleo",
            TRUE ~ "CMIP5") )
 
 ### Create a column for response folder
@@ -151,6 +151,7 @@ scenario_df <- scenario_df %>%
 scenario_df <- scenario_df %>%
 		mutate(read_location = case_when(
   			data == "paleo"  ~ file.path(response_folder, paste0(base_folder,"WeberOutput-",response,".csv")),
+  			data == "observed" ~ file.path(response_folder, paste0(base_folder,"WeberOutput-",response,"Obs1905.csv")),
   			data == "base" ~ file.path(response_folder, paste0(base_folder,"WeberOutput-",response,"_hist.csv")),
   			TRUE ~ file.path(response_folder, paste0(base_folder,"WeberOutput-",response,"_",data,".csv")))
   		)
@@ -163,14 +164,16 @@ scenario_df <- scenario_df %>%
 ### Loop through all scenarios to read in data
 for (i in seq(1,dim(scenario_df)[1])){
 	### Read in data
-	stor_temp <- read.csv(file = scenario_df$read_location[i])
+	#stor_temp <- read.csv(file = scenario_df$read_location[i])
+	stor_temp <- try(read.csv(file = scenario_df$read_location[i]), silent=TRUE)
 
+	if(class(stor_temp) != "try-error"){
 	### Cut to only reservoirs and save reservoir names
 	stor_res <- stor_temp %>% select(dplyr::contains("RES"))
 	res_names <- names(stor_res)
 	
 	### Create date column
-	if (scenario_df$data[i]=="paleo"){
+	if (scenario_df$data[i]=="paleo" | scenario_df$data[i]=="observed"){
 		date_vec <- stor_temp$Actual.Date
 		date_vec <- as.Date(paste0(substr(date_vec,4,9), "-", substr(date_vec,1,2), "-01"))
 	} else {
@@ -188,8 +191,12 @@ for (i in seq(1,dim(scenario_df)[1])){
 	
 	### Add column to shift climate change forward in time
 	stor_temp$base_date <- stor_temp$date
-	if (scenario_df$data[i] != "paleo" & scenario_df$data[i] != "base"){
+	if (scenario_df$data[i] != "paleo" & scenario_df$data[i] != "base" & scenario_df$data[i] != "observed"){
 		stor_temp$date <- stor_temp$date %m+% years(55)
+	}
+
+	if (scenario_df$data[i] == "observed"){
+		stor_temp$date <- stor_temp$date %m+% years(-1)
 	}
 
 	### Combine data
@@ -199,6 +206,8 @@ for (i in seq(1,dim(scenario_df)[1])){
 		stor_all <- rbind(stor_all, stor_temp)
 	}
 	
+	}
+	
 }
 
 
@@ -206,7 +215,7 @@ for (i in seq(1,dim(scenario_df)[1])){
 ###  Prepare data
 ###########################################################################
 ### Define order for data and response factors
-stor_all$data <- factor(stor_all$data, levels= c("paleo", "observed", "base", "ww", "hw", "wd", "hd"))
+stor_all$data <- factor(stor_all$data, levels= data_list)
 data_levels <- levels(stor_all$data)
 
 stor_all$response <- factor(stor_all$response, levels= drought_response_list)
@@ -221,8 +230,12 @@ stor_all$wy <- usgs_wateryear(year=stor_all$year, month=stor_all$month)
 ### Make months a factor
 stor_all$month <- factor(stor_all$month, levels=c(seq(10, 12), seq(1,9)))
 
+### Remove Observed before 1905
+remove_test <- stor_all$year <= 1904 & stor_all$data=="observed"
+stor_all <- stor_all[!remove_test,]
+
 ### Assume Paleo after 1904 is "Observed"
-stor_all$data[stor_all$year >= 1904 & stor_all$data=="paleo"] <- "observed"
+#stor_all$data[stor_all$year >= 1904 & stor_all$data=="paleo"] <- "observed"
 
 ###########################################################################
 ###  Calculate System Total storage
@@ -392,6 +405,11 @@ stor_percent$precip <- stor_all$precip
 ### Create a dataframe with all possible combinations
 ### Had to do it this way because observed is not in original scenario_df
 all_runs <- expand.grid(response=levels(stor_all$response), data=levels(stor_all$data))
+
+### Remove observed, not Base
+obs_test <- all_runs$data == "observed"
+obs_test <- obs_test == TRUE & all_runs$response != "Base"
+all_runs <- all_runs[!obs_test, ]
 
 ### Loop through all possible combinations and run Hashimoto vulnerability
 for (i in seq(1,dim(all_runs)[1])){
