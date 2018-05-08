@@ -76,6 +76,8 @@ require(tidyverse)
 ###########################################################################
 load(file.path(weber_output_path, "weber_storage_output.RData"))
 
+load(file.path(weber_output_path, "weber_clustering.RData"))
+
 ###########################################################################
 ## Create Output Paths
 ###########################################################################

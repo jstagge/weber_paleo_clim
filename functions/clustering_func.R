@@ -80,13 +80,54 @@ p <- p + ylab("Avg. Silhouette Width")  #insert the y-axis title
 p <- p + scale_x_continuous(breaks=seq(0,19,2))
 
 ### Save results
-ggsave(file.path(save_directory, "clusters/silWidth_bycluster.png"),  p, width=3.5, height=2.7, dpi=300)
-ggsave(file.path(save_directory, "clusters/silWidth_bycluster.pdf"),  p, width=3.5, height=2.7)
-ggsave(file.path(save_directory, "clusters/silWidth_bycluster.svg"),  p, width=3.5, height=2.7)
+ggsave(file.path(save_directory, "goodness/silWidth_bycluster.png"),  p, width=3.5, height=2.7, dpi=300)
+ggsave(file.path(save_directory, "goodness/silWidth_bycluster.pdf"),  p, width=3.5, height=2.7)
+ggsave(file.path(save_directory, "goodness/silWidth_bycluster.svg"),  p, width=3.5, height=2.7)
 
 return(p)
 }
 
+
+###########################################################################
+## Silhouette plot
+###########################################################################
+plot_sil <- function(cluster_df, dist, k, save_directory) {
+	
+	cluster <- cluster_df[,(k-1)]
+	
+	## Generate colors
+	plot_col <- pal_d3("category20")(max(cluster))
+	
+	### Set save location
+	save_location <- file.path(save_directory, paste0("goodness/",cluster_method,"_sil_k_",k))
+	
+	### Save png
+	png(filename=paste0(save_location, ".png"), 
+    	type="cairo",
+    	units="in", 
+    	width=5, 
+    	height=5, 
+    	pointsize=12, 
+    	res=300)
+    plot(silhouette(cluster, distMatrix), col = plot_col, border=NA)
+	dev.off()
+	
+	### Save pdf
+	pdf(file=paste0(save_location, ".pdf"), 
+    	width=5, 
+    	height=5, 
+    	pointsize=12)
+    plot(silhouette(cluster, distMatrix), col = plot_col, border=NA)
+	dev.off()	
+		
+	### Save svg
+	svg(filename=paste0(save_location, ".svg"), 
+    	width=5, 
+    	height=5, 
+    	pointsize=12)
+    plot(silhouette(cluster, distMatrix), col = plot_col, border=NA)
+	dev.off()
+}
 
 
 ###########################################################################
@@ -116,6 +157,33 @@ plot_clusters <- function(plot_df, k, save_directory) {
 ggsave(file.path(save_directory, paste0("clusters/",cluster_method,"_clust_k_",k,".png")),  p, width=6.5, height=5, dpi=300)
 ggsave(file.path(save_directory, paste0("clusters/",cluster_method,"_clust_k_",k,".pdf")),  p, width=6.5, height=5)
 ggsave(file.path(save_directory, paste0("clusters/",cluster_method,"_clust_k_",k,".svg")),  p, width=6.5, height=5)
+
+### Plot with only points
+	p <- ggplot(cluster_event_df, aes(x=dura_months/12, y=min_perc*100, label=substr(begin,1,4)))
+	p <- p + geom_point(aes(colour=as.factor(get(paste0("k_",k)))), size=2.5)
+	#p <- p + geom_text(aes(colour=as.factor(get(paste0("k_",k)))), size=2.7)
+	p <- p + scale_x_continuous(name="Drought Duration (Years)", breaks=seq(0,16,2))
+	p <- p + scale_y_continuous(name="Min Flow Percentile")
+	p <- p + scale_color_d3(name="Cluster", palette = "category20")
+	#p <- p + scale_shape_discrete(solid=T)
+	p <- p + theme_classic_new(12)
+	p <- p + theme(legend.position = c(0.85, 0.85))
+		
+	if (k > 4) {
+	p <- p + guides(colour=guide_legend(ncol=2))
+	}
+	if (k > 8) {
+	p <- p + guides(colour=guide_legend(ncol=3))
+	}	
+	if (k > 12) {
+	p <- p + guides(colour=guide_legend(ncol=4))
+	}		
+
+### Save results
+ggsave(file.path(save_directory, paste0("clusters/",cluster_method,"_clust_k_",k,"_points.png")),  p, width=6.5, height=5, dpi=300)
+ggsave(file.path(save_directory, paste0("clusters/",cluster_method,"_clust_k_",k,"_points.pdf")),  p, width=6.5, height=5)
+ggsave(file.path(save_directory, paste0("clusters/",cluster_method,"_clust_k_",k,"_points.svg")),  p, width=6.5, height=5)
+
 
 	return(p)
 }

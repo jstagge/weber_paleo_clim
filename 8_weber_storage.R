@@ -376,6 +376,14 @@ stor_all$extreme[stor_all$extreme < 0] <- 0
 stor_all$moderate[stor_all$moderate > (moderate_trigger -severe_trigger)] <- (moderate_trigger - severe_trigger)[stor_all$moderate > (moderate_trigger -severe_trigger)]
 stor_all$severe[stor_all$severe > (severe_trigger - extreme_trigger)] <- (severe_trigger - extreme_trigger)[stor_all$severe > (severe_trigger - extreme_trigger)] 
 
+### Define trigger category
+stor_all$trigger_category <- "None"
+stor_all$trigger_category[stor_all$moderate > 0] <- "Moderate"
+stor_all$trigger_category[stor_all$severe > 0] <- "Severe"
+stor_all$trigger_category[stor_all$extreme > 0] <- "Extreme"
+
+
+
 ###########################################################################
 ###  Make data descriptors
 ###########################################################################
