@@ -104,7 +104,7 @@ m3_to_acft <- 1233.4818
 
 ### List of drought responses and data sources
 drought_response_list <- c("Base", "ChalkCreekRes", "DemandManagement", "GravelPitRes")
-data_list <- c("paleo", "observed", "base", "ww", "hw", "wd", "hd")
+data_list <- c("paleo", "observed", "base", "ww", "hw", "ct", "wd", "hd")
 
 ###########################################################################
 ###  Read in Data
@@ -114,8 +114,12 @@ read_location <- file.path(weber_stor_path, "weber_storage.csv")
 total_storage <- read.csv(file = read_location)
 
 ### Read in reservoir storage trigger points
-weber_triggers <- file.path(weber_stor_path, "mean_weber_stor_levels.csv")
-weber_triggers <- read.csv(file = weber_triggers)
+#weber_triggers <- file.path(weber_stor_path, "mean_weber_stor_levels.csv")
+#weber_triggers <- read.csv(file = weber_triggers)
+
+### Weber annual triggers
+weber_triggers <- data.frame(Month=6, moderate=380000, severe=340000, extreme=280000)
+
 ### Convert weber_triggers month column into factor
 weber_triggers$Month <- factor(weber_triggers$Month, levels=c(seq(10,12), seq(1,9)))
 
@@ -137,7 +141,7 @@ scenario_df <- expand.grid(response=drought_response_list, data=data_list)
 ### Create a column for base folders
 scenario_df <- scenario_df %>%
        mutate(base_folder = case_when(
-           data == "paleo" | data == "observed" ~ "Paleo",
+           data == "paleo" ~ "Paleo",
            TRUE ~ "CMIP5") )
 
 ### Create a column for response folder
@@ -151,7 +155,7 @@ scenario_df <- scenario_df %>%
 scenario_df <- scenario_df %>%
 		mutate(read_location = case_when(
   			data == "paleo"  ~ file.path(response_folder, paste0(base_folder,"WeberOutput-",response,".csv")),
-  			data == "observed" ~ file.path(response_folder, paste0(base_folder,"WeberOutput-",response,"Obs1905.csv")),
+  			data == "observed" ~ file.path(response_folder, paste0(base_folder,"WeberOutput-",response,"_hist.csv")),
   			data == "base" ~ file.path(response_folder, paste0(base_folder,"WeberOutput-",response,"_hist.csv")),
   			TRUE ~ file.path(response_folder, paste0(base_folder,"WeberOutput-",response,"_",data,".csv")))
   		)
@@ -163,17 +167,19 @@ scenario_df <- scenario_df %>%
 
 ### Loop through all scenarios to read in data
 for (i in seq(1,dim(scenario_df)[1])){
+	cat(paste0(i, " \n"))
+	
 	### Read in data
 	#stor_temp <- read.csv(file = scenario_df$read_location[i])
 	stor_temp <- try(read.csv(file = scenario_df$read_location[i]), silent=TRUE)
 
 	if(class(stor_temp) != "try-error"){
 	### Cut to only reservoirs and save reservoir names
-	stor_res <- stor_temp %>% select(dplyr::contains("RES"))
+	stor_res <- stor_temp %>% select(dplyr::contains("RES", ignore.case=FALSE))
 	res_names <- names(stor_res)
 	
 	### Create date column
-	if (scenario_df$data[i]=="paleo" | scenario_df$data[i]=="observed"){
+	if (scenario_df$data[i]=="paleo"){
 		date_vec <- stor_temp$Actual.Date
 		date_vec <- as.Date(paste0(substr(date_vec,4,9), "-", substr(date_vec,1,2), "-01"))
 	} else {
@@ -195,9 +201,20 @@ for (i in seq(1,dim(scenario_df)[1])){
 		stor_temp$date <- stor_temp$date %m+% years(55)
 	}
 
-	if (scenario_df$data[i] == "observed"){
-		stor_temp$date <- stor_temp$date %m+% years(-1)
-	}
+	#if (scenario_df$data[i] == "observed"){
+	#	stor_temp$date <- stor_temp$date %m+% years(-1)
+	#}
+	
+	### Assume Observed based on Base run after 1980-10-01
+	#if (scenario_df$data[i] == "observed"){
+	#	stor_temp <- stor_temp[year(stor_temp$date) >= 1970,]
+	#}			
+		
+	### Assume Paleo becomes observed in 1904 
+	if (scenario_df$data[i] == "paleo"){
+		stor_temp <- stor_temp[stor_temp$date < as.Date("1980-10-01"),]
+		stor_temp$data[stor_temp$date >= as.Date("1904-10-01")] <- "observed"
+	}			
 
 	### Combine data
 	if (i == 1){
@@ -210,6 +227,13 @@ for (i in seq(1,dim(scenario_df)[1])){
 	
 }
 
+###########################################################################
+###  Adjust dates forward by 1 month
+###########################################################################
+### What is listed as June 1 is actually the end of June, or July 1
+
+stor_all$date <- stor_all$date %m+% months(1)
+stor_all$base_date <- stor_all$base_date %m+% months(1)
 
 ###########################################################################
 ###  Prepare data
@@ -230,12 +254,33 @@ stor_all$wy <- usgs_wateryear(year=stor_all$year, month=stor_all$month)
 ### Make months a factor
 stor_all$month <- factor(stor_all$month, levels=c(seq(10, 12), seq(1,9)))
 
-### Remove Observed before 1905
-remove_test <- stor_all$year <= 1904 & stor_all$data=="observed"
-stor_all <- stor_all[!remove_test,]
+### Remove Observed before 1970
+#remove_test <- stor_all$year <= 1970 & stor_all$data=="observed"
+#stor_all <- stor_all[!remove_test,]
 
 ### Assume Paleo after 1904 is "Observed"
 #stor_all$data[stor_all$year >= 1904 & stor_all$data=="paleo"] <- "observed"
+
+### Assume Observed is Paleo after 1904, True observed from 1970 until present
+#remove_test <- stor_all$year < 1970 & stor_all$data=="observed"
+#stor_all <- stor_all[!remove_test,]
+
+#remove_test <- stor_all$year > 1970 & stor_all$data=="paleo"
+#stor_all <- stor_all[!remove_test,]
+#stor_all$data[stor_all$year >= 1904 & stor_all$year < 1970 & stor_all$data=="paleo"] <- "observed"
+
+### Re-order by response, data, and then date
+stor_all <- stor_all %>% 
+	arrange(response, data, date)
+
+###########################################################################
+###  Only work with Active Storage
+###########################################################################
+res_test <- names(stor_all) %in% paste0("res_", seq(1,10))
+
+### Subtract each reservoir by its active bottom
+stor_all[,res_test] <- sweep(stor_all[,res_test], 2,total_storage$Active_bottom, "-")
+
 
 ###########################################################################
 ###  Calculate System Total storage
@@ -257,37 +302,36 @@ stor_percent <- stor_all
 res_test <- names(stor_percent) %in% paste0("res_", seq(1,10))
 
 ### Divide each reservoir by its total storage
-stor_percent[,res_test] <- sweep(stor_all[,res_test], 2, c(total_storage$Total, NA, NA), "/")
+stor_percent[,res_test] <- sweep(stor_all[,res_test], 2, total_storage$Active, "/")
 
 ### Divide for total system storage
-stor_percent$total_res <- stor_percent$total_res / sum(total_storage$Total, na.rm=TRUE)
-stor_percent$current_res <- stor_percent$current_res / sum(total_storage$Total, na.rm=TRUE)
+stor_percent$total_res <- stor_percent$total_res / sum(total_storage$Active, na.rm=TRUE)
+stor_percent$current_res <- stor_percent$current_res / sum(total_storage$Active[seq(1,8)], na.rm=TRUE)
 
 head(stor_percent)
 
 ###########################################################################
 ###  Calculate Triggers
 ###########################################################################
-weber_triggers$moderate <- weber_triggers[,2] * 0.7
-weber_triggers$severe <- weber_triggers[,2] * 0.5
-weber_triggers$extreme <- weber_triggers[,2] * 0.25
+#weber_triggers$moderate <- weber_triggers[,2] * 0.7
+#weber_triggers$severe <- weber_triggers[,2] * 0.5
+#weber_triggers$extreme <- weber_triggers[,2] * 0.25
 
 ### Estimate annual trigger for plots based on June storage
-### Used only for plotting
-mod_annual <- weber_triggers$moderate[6]
-sev_annual <- weber_triggers$severe[6]
-ext_annual <- weber_triggers$extreme[6]
+mod_annual <- weber_triggers$moderate
+sev_annual <- weber_triggers$severe
+ext_annual <- weber_triggers$extreme
 
-### Calculate trigger percents based on storage
-total_system_stor <- sum(total_storage$Total, na.rm=TRUE)
+### Calculate trigger percents based on active storage currently in the system
+total_system_stor <- sum(total_storage$Active[seq(1,8)], na.rm=TRUE)
 weber_triggers$mod_perc <- weber_triggers$moderate/total_system_stor
 weber_triggers$sev_perc <- weber_triggers$severe/total_system_stor
 weber_triggers$ext_perc <- weber_triggers$extreme/total_system_stor
 
-### Estimate annual trigger for plots based on May storage
-mod_perc_annual <- weber_triggers$mod_perc[6]
-sev_perc_annual <- weber_triggers$sev_perc[6]
-ext_perc_annual <- weber_triggers$ext_perc[6]
+### Estimate annual trigger for plots based on June storage
+mod_perc_annual <- weber_triggers$mod_perc
+sev_perc_annual <- weber_triggers$sev_perc
+ext_perc_annual <- weber_triggers$ext_perc
 
 ###########################################################################
 ###  Calculate Regions
@@ -333,7 +377,8 @@ stor_all$lower <- stor_all %>%
 ### Calculate storage percent by region
 stor_percent$upper_ogden <- stor_all$upper_ogden / sum(total_storage$Total[seq(6,7)], na.rm=TRUE)
 stor_percent$upper_weber <- stor_all$upper_weber / sum(total_storage$Total[seq(1,5)], na.rm=TRUE)
-stor_percent$lower <- stor_all$lower  / sum(total_storage$Total[seq(8,10)], na.rm=TRUE)
+### Ignore new reservoirs in lower, i.e. calculate percent of current storage available
+stor_percent$lower <- stor_all$lower  / sum(total_storage$Total[8], na.rm=TRUE)
 
 
 ###########################################################################
@@ -347,43 +392,58 @@ trigger_df <- left_join(trigger_df, weber_triggers, by = c("month" = "Month"))
 
 ### Sort and rename
 trigger_df <- trigger_df[ with(trigger_df, order(row_index)),]
-names(trigger_df)[3] <- "trigger"
+#names(trigger_df)[3] <- "trigger"
 head(trigger_df)
 
-stor_all$trigger <- trigger_df$trigger
+#stor_all$trigger <- trigger_df$trigger
 
-### Moderate 50-70% of mean
-### Severe 25-50% of mean
-### Extreme 0-25% of mean
-
-moderate_trigger <- trigger_df$trigger * 0.7
-severe_trigger <- trigger_df$trigger * 0.5
-extreme_trigger <- trigger_df$trigger * 0.25
+moderate_trigger <- trigger_df$moderate
+severe_trigger <- trigger_df$severe
+extreme_trigger <- trigger_df$extreme
 
 ### Calculate deficits 
-stor_all$total_res_deficit <- moderate_trigger - stor_all$total_res
+stor_all$trigger_deficit <- moderate_trigger - stor_all$total_res
+stor_all$trigger_deficit[stor_all$trigger_deficit < 0] <- 0
 stor_all$moderate <- moderate_trigger - stor_all$total_res
 stor_all$severe <- severe_trigger - stor_all$total_res
 stor_all$extreme <- extreme_trigger - stor_all$total_res
 
-### Clear all negative deficits (above threshold) 
-stor_all$total_res_deficit[stor_all$total_res_deficit < 0] <- 0
-stor_all$moderate[stor_all$moderate < 0] <- 0
-stor_all$severe[stor_all$severe < 0] <- 0
-stor_all$extreme[stor_all$extreme < 0] <- 0
-
 ### Calculate deficit within each area (so they sum properly) 
-stor_all$moderate[stor_all$moderate > (moderate_trigger -severe_trigger)] <- (moderate_trigger - severe_trigger)[stor_all$moderate > (moderate_trigger -severe_trigger)]
-stor_all$severe[stor_all$severe > (severe_trigger - extreme_trigger)] <- (severe_trigger - extreme_trigger)[stor_all$severe > (severe_trigger - extreme_trigger)] 
+### Clear all negative deficits (above threshold) 
+### Limit maximum to the difference between thresholds
+stor_all <- stor_all %>%
+	mutate(moderate = case_when(
+		is.na(moderate) ~ NA_real_,
+		moderate < 0 ~ 0,
+		moderate > (mod_annual - sev_annual) ~ (mod_annual - sev_annual), 
+		TRUE ~ moderate)) 
 
-### Define trigger category
-stor_all$trigger_category <- "None"
-stor_all$trigger_category[stor_all$moderate > 0] <- "Moderate"
-stor_all$trigger_category[stor_all$severe > 0] <- "Severe"
-stor_all$trigger_category[stor_all$extreme > 0] <- "Extreme"
+stor_all <- stor_all %>%
+	mutate(severe = case_when(
+		is.na(severe) ~ NA_real_,
+		severe < 0 ~ 0,
+		severe > (sev_annual - ext_annual) ~ (sev_annual - ext_annual), 
+		TRUE ~ severe)) 
+		
+stor_all <- stor_all %>%
+	mutate(extreme = case_when(
+		is.na(extreme) ~ NA_real_,
+		extreme < 0 ~ 0, 
+		TRUE ~ extreme)) 	
 
-
-
+### Create column for categories
+stor_all <- stor_all %>%
+	mutate(trigger_category = case_when(
+		month != 6 ~ NA_character_,
+		extreme > 0 ~ "Extreme",
+		severe > 0 ~ "Severe",
+		moderate > 0 ~ "Moderate",
+		TRUE ~ "None")) 
+		
+### Fill in each year based on the previous June, i.e. triggers remain in effect for a year until next June
+stor_all <- stor_all %>%
+	fill(trigger_category, .direction="down")		
+		
 ###########################################################################
 ###  Make data descriptors
 ###########################################################################
@@ -391,15 +451,17 @@ stor_all$trigger_category[stor_all$extreme > 0] <- "Extreme"
 stor_all$temp <- NA
 stor_all$temp[stor_all$data == "hd" | stor_all$data == "hw"] <- "Hot"
 stor_all$temp[stor_all$data == "wd" | stor_all$data == "ww"] <- "Warm"
+stor_all$temp[stor_all$data == "ct"] <- "Median"
 stor_all$temp[stor_all$data == "base"] <- "Base"
-stor_all$temp <- factor(stor_all$temp, levels= c("Base", "Warm", "Hot"))
+stor_all$temp <- factor(stor_all$temp, levels= c("Base", "Warm", "Median", "Hot"))
 
 ### Add column for precipitation
 stor_all$precip <- NA
 stor_all$precip[stor_all$data == "hd" | stor_all$data == "wd"] <- "Dry"
 stor_all$precip[stor_all$data == "hw" | stor_all$data == "ww"] <- "Wet"
+stor_all$precip[stor_all$data == "ct"] <- "Median"
 stor_all$precip[stor_all$data == "base"] <- "Base"
-stor_all$precip <- factor(stor_all$precip, levels= c("Base", "Wet", "Dry"))
+stor_all$precip <- factor(stor_all$precip, levels= c("Base", "Wet", "Median", "Dry"))
 
 ### Add to Percent
 stor_percent$temp <- stor_all$temp 
@@ -415,19 +477,20 @@ stor_percent$precip <- stor_all$precip
 all_runs <- expand.grid(response=levels(stor_all$response), data=levels(stor_all$data))
 
 ### Remove observed, not Base
-obs_test <- all_runs$data == "observed"
-obs_test <- obs_test == TRUE & all_runs$response != "Base"
-all_runs <- all_runs[!obs_test, ]
+#obs_test <- all_runs$data == "observed"
+#obs_test <- obs_test == TRUE & all_runs$response != "Base"
+#all_runs <- all_runs[!obs_test, ]
 
 ### Loop through all possible combinations and run Hashimoto vulnerability
 for (i in seq(1,dim(all_runs)[1])){
 	### Extract only the correct data and sort
 	stor_i <- stor_all %>% 
-		filter(data == all_runs$data[i] & response == all_runs$response[i]) %>%
+		filter(data == all_runs$data[i] & response == all_runs$response[i], month == 6) %>%
 		dplyr::arrange(-dplyr::desc(date))
 
+	if (dim(stor_i)[1] != 0) {
 	### Run Hashimoto function for demand and request storage
-	hash_temp_stor <- hash_perform(stor_i, shortage_col="total_res_deficit")
+	hash_temp_stor <- hash_perform(stor_i, shortage_col="trigger_deficit")
 	hash_temp_stor <- data.frame(all_runs[i,], short_type="stor_moderate_trigger", hash_temp_stor)
 	
 	### Combine the results
@@ -435,6 +498,7 @@ for (i in seq(1,dim(all_runs)[1])){
 		hash_stor <- hash_temp_stor
 	} else {
 		hash_stor <- rbind(hash_stor, hash_temp_stor)
+	}
 	}
 }
 
@@ -450,9 +514,17 @@ save.image(file.path(weber_output_path, "weber_storage_output.RData"))
 
 
 
+  
+###########################################################################
+###   Extract just June Storage for Chris
+###########################################################################
 
+chris_stor <- stor_all %>% 
+	filter(response == "Base" & month == 6) %>%
+	select(date, base_date:year, data, res_1:res_10, total_res:trigger_category) %>% 
+	arrange(data, year)
 
-
+write.csv(chris_stor, file.path(weber_output_path, "weber_active_storage_triggers_annual.csv"))
 
 
 

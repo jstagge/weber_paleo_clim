@@ -64,6 +64,7 @@ require(assertthat)
 
 ### Load these functions for this unique project
 require(ggplot2)
+require(tidyverse)
 require(staggefuncs)
 require(paleoAPR)
 require(data.table)

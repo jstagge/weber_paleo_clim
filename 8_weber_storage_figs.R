@@ -74,9 +74,9 @@ require(tidyverse)
 ###########################################################################
 ## Open Output File
 ###########################################################################
-load(file.path(weber_output_path, "weber_storage_output.RData"))
-
 load(file.path(weber_output_path, "weber_clustering.RData"))
+
+load(file.path(weber_output_path, "weber_storage_output.RData"))
 
 ###########################################################################
 ## Create Output Paths
@@ -89,10 +89,11 @@ dir.create(storage_output_path)
 ## Set Colors
 ###########################################################################
 ### Colors to use for climate change scenarios
-cc_colors <- c("#0072B2", "#56B4E9", "#E69F00" , "#D55E00")
+cc_colors <- c("#0072B2", "#56B4E9", "#9BAEBC", "#E69F00" , "#D55E00")
 data_colors <- c("#7fc97f", "grey40", "grey80", cc_colors)
 
-data_labels <- c( "Reconstructed", "Observed", "Base", "Climate Change (WW)", "Climate Change (HW)", "Climate Change (WD)", "Climate Change (HD)")
+data_labels <- c( "Reconstructed", "Observed", "Base", "Climate Change (WW)", "Climate Change (HW)", "Climate Change (Median)", "Climate Change (WD)", "Climate Change (HD)")
+data_labels_twolines <- c( "Reconstructed", "Observed", "Base", "Clim Change\n(Warm-Wet)", "Clim Change\n(Hot-Wet)", "Clim Change\n(Median)", "Clim Change\n(Warm-Dry)", "Clim Change\n(Hot-Dry)")
 
 ### Colors for triggers
 trigger_colors <- c("#f03b20",  "#feb24c", "#ffeda0")
@@ -151,29 +152,51 @@ ggsave(file.path(storage_output_path,"trigger_levels_perc.png"),  p, width=4.5, 
 ggsave(file.path(storage_output_path,"trigger_levels_perc.pdf"),  p, width=4.5, height=4)
 ggsave(file.path(storage_output_path,"trigger_levels_perc.svg"),  p, width=4.5, height=4)
 
+
+###########################################################################
+## Extract only base scenario
+###########################################################################
+stor_base <- stor_all %>% 
+	filter(response == "Base")
+
+stor_base_percent <- stor_percent %>% 
+	filter(response == "Base")
+
+###########################################################################
+## Calculate total storage
+###########################################################################
+### Calculate Current total active storage
+current_active_stor <- sum(total_storage$Active[seq(1,8)], na.rm=TRUE)
+total_active_stor <- current_active_stor
+
+active_stor_vec <- c(current_active_stor, total_active_stor, sum(total_storage$Active[seq(1,5)], na.rm=TRUE), sum(total_storage$Active[seq(6,7)], na.rm=TRUE), sum(total_storage$Active[8], na.rm=TRUE))
+names(active_stor_vec) <- region_levels
+
 ###########################################################################
 ###  Test plots
 ###########################################################################
-yup <- stor_all %>% 
-	filter(response == "Base")
-	
-yup_delete <- yup[1,]
+
+yup_delete <- stor_base[1,]
 yup_delete$data <- "delete"
 yup_delete$total_res <- NA
-yup <- rbind(yup, yup_delete)
+yup <- rbind(stor_base, yup_delete)
 yup$data <- factor(yup$data, levels=c(data_levels[seq(1,3)], "delete", data_levels[seq(4,7)]), labels=c(data_labels[seq(1,3)], "", data_labels[seq(4,7)]))
+
+yup <- stor_base
+yup$data <- factor(yup$data, levels=data_levels[c(1,2,3,6,4,5,7,8)], labels=data_labels[c(1,2,3,6,4,5,7,8)])
 
 p <- ggplot(yup, aes(x=month))
 p <- p + geom_line(aes(y=total_res/1000, group=wy, colour=data), size=0.3)
 p <- p + scale_x_discrete(name="Month")
-p <- p + scale_y_continuous(name="Total System Storage (1,000 ac-ft)") 
-p <- p + facet_wrap(~data, nrow=2)
-p <- p + scale_colour_manual(name="Scenario", values=c(data_colors[seq(1,3)], "pink", data_colors[seq(4,7)]))
-p <- p + theme_classic_new() 
+p <- p + scale_y_continuous(name="Total Active Storage (1,000 ac-ft)", breaks=seq(0,800,100), sec.axis = sec_axis(name="Total Active Storage (%)", trans=~ ((.*1000)/current_active_stor)*100, breaks=seq(0,100,25)), expand = c(0,0)) 
+p <- p + facet_wrap(~data, nrow=2, scales="free_x")
+p <- p + scale_colour_manual(name="Scenario", values=c(data_colors[c(1,2,3,6,4,5,7,8)]), guide=guide_legend(byrow=TRUE))
+p <- p + theme_classic_new() + theme(legend.position="bottom")
+p <- p + expand_limits(y=c(-10, current_active_stor/1000+10))
 p
 
 ### Save figures
-ggsave(file.path(storage_output_path,"storage_bymonth_line.png"),  p, width=7.5, height=4, dpi=600)
+ggsave(file.path(storage_output_path,"storage_bymonth_line.png"),  p, width=7.5, height=5, dpi=600)
 
 p <- ggplot(yup, aes(x=month, y=total_res/1000, group=wy, colour=data))
 p <- p + geom_line(size=0.3)
@@ -184,65 +207,152 @@ p
 p <- ggplot(yup, aes(x=month))
 p <- p + geom_boxplot(aes(y=total_res/1000, colour=data), size=0.3)
 p <- p + scale_x_discrete(name="Month")
-p <- p + scale_y_continuous(name="Total System Storage (1,000 ac-ft)") 
-p <- p + facet_wrap(~data, nrow=2)
-p <- p + scale_colour_manual(name="Scenario", values=c(data_colors[seq(1,3)], data_colors[seq(4,7)]))
-p <- p + theme_classic_new()
+p <- p + scale_y_continuous(name="Total Active Storage (1,000 ac-ft)", breaks=seq(0,800,100), sec.axis = sec_axis(name="Total Active Storage (%)", trans=~ ((.*1000)/current_active_stor)*100, breaks=seq(0,100,25)), expand = c(0,0)) 
+p <- p + facet_wrap(~data, nrow=2, scales="free_x")
+p <- p + scale_colour_manual(name="Scenario", values=c(data_colors[c(1,2,3,6,4,5,7,8)]), guide=guide_legend(byrow=TRUE))
+p <- p + theme_classic_new() + theme(legend.position="bottom")
+p <- p + expand_limits(y=c(-10, current_active_stor/1000+10))
 p
 
 ### Save figures
-ggsave(file.path(storage_output_path,"storage_bymonth_boxplot.png"),  p, width=7.5, height=4, dpi=600)
+ggsave(file.path(storage_output_path,"storage_bymonth_boxplot.png"),  p, width=7.5, height=5, dpi=600)
+
+
+yup <- stor_base
+yup$data <- factor(yup$data, levels=data_levels, labels=data_labels)
 
 p <- ggplot(yup, aes(x=month))
 p <- p + geom_boxplot(aes(y=total_res/1000, fill=data), size=0.3, colour=NA, alpha=0.6)
 p <- p + geom_boxplot(aes(y=total_res/1000, colour=data), size=0.3, fill=NA)
-p <- p + scale_colour_manual(name="Scenario", values=c(data_colors[seq(1,3)], data_colors[seq(4,7)]))
-p <- p + scale_fill_manual(name="Scenario", values=c(data_colors[seq(1,3)], data_colors[seq(4,7)]))#, alpha=0.5)
+p <- p + scale_colour_manual(name="Scenario", values=c(data_colors))
+p <- p + scale_fill_manual(name="Scenario", values=c(data_colors))
 p <- p + scale_x_discrete(name="Month")
-p <- p + scale_y_continuous(name="Total System Storage (1,000 ac-ft)") 
+p <- p + scale_y_continuous(name="Total Active Storage (1,000 ac-ft)", breaks=seq(0,800,100), sec.axis = sec_axis(name="Total Active Storage (%)", trans=~ ((.*1000)/current_active_stor)*100, breaks=seq(0,100,25)), expand = c(0,0)) 
 p <- p + theme_classic_new()
 p <- p + theme(legend.position="bottom")
 p <- p + guides(colour = guide_legend(nrow = 1), fill = guide_legend(nrow = 1))
+p <- p + expand_limits(y=c(-10, current_active_stor/1000+10))
 p
 
 ### Save figures
 ggsave(file.path(storage_output_path,"storage_bymonth_boxplot_merge.png"),  p, width=7.5, height=4.5, dpi=600)
 
 
-p <- ggplot(stor_all, aes(x=date, fill=data))
-p <- p + geom_area(aes(y=total_res), size=0.3, position="identity", alpha=0.4)
+p <- ggplot(subset(yup, month==6), aes(x=total_res/1000, y=..density..,  color=data))
+p <- p +  geom_freqpoly(binwidth = 25)
+p <- p + scale_colour_manual(name="Scenario", values=c(data_colors))
 p <- p + theme_classic_new()
 p
 
+
+p <- ggplot(subset(yup, month==6), aes(x=total_res/1000, y=..density..,  fill=data))
+p <- p + geom_histogram(position="dodge",  binwidth = 50)
+p <- p + scale_fill_manual(name="Scenario", values=c(data_colors))
+p <- p + theme_classic_new()
+p
+
+#p <- p + geom_density()
+p <- p + facet_wrap(~data, ncol=1)
+p
+
+p <- ggplot(subset(yup, month==6), aes(x=total_res/1000, color=data))
+p <- p + geom_density()
+p <- p + scale_colour_manual(name="Scenario", values=c(data_colors))
+p <- p + theme_classic_new()
+p
+
+require(ggridges)
+
+yup <- stor_base
+yup$data <- factor(yup$data, levels=data_levels[c(4, 5, 1:3, 6:8)], labels=data_labels[c(4, 5, 1:3, 6:8)])
+
+p <- ggplot(subset(yup, month==6), aes(x = total_res/1000, y = data, fill = data, height = ..density..))
+p <- p + geom_density_ridges(stat = "density", scale=20)
+p <- p + geom_vline(xintercept=unlist(weber_triggers[c(2,3,4)])/1000, linetype="dotted")
+p <- p + scale_y_discrete(name="", limits = rev(levels(yup$data)), labels=rev(data_labels_twolines[c(4, 5, 1:3, 6:8)]))
+p <- p + scale_x_continuous(name="June Active Storage (1,000 ac-ft)", breaks=seq(0,800,100), sec.axis = sec_axis(name="June Active Storage (%)", trans=~ ((.*1000)/current_active_stor)*100, breaks=seq(0,100,25)), expand = c(0,0))
+p <- p + scale_fill_manual(name="Scenario", values=data_colors[c(4, 5, 1:3, 6:8)])
+p <- p + theme_classic_new(9)
+#p <- p + theme(legend.position="left")
+p <- p + expand_limits(x=c(-10, current_active_stor/1000+10))
+p <- p + coord_cartesian(ylim=c(1.2,8.5))
+p
+
+### Save figures
+ggsave(file.path(storage_output_path,"storage_june_ridge.png"),  p, width=7.5, height=4.5, dpi=600)
+
+yup <- stor_base
+yup$data <- factor(yup$data, levels=data_levels[c(4, 5, 1:3, 6:8)], labels=data_labels[c(4, 5, 1:3, 6:8)])
+
+p <- ggplot(subset(yup, month==6), aes(x = total_res/1000, y = data, fill = data, height = ..density..))
+p <- p + geom_density_ridges(stat = "binline", bins = 20, scale = 1.8, draw_baseline = FALSE, alpha=0.8)
+p <- p + geom_vline(xintercept=unlist(weber_triggers[c(2,3,4)])/1000, linetype="dotted")
+p <- p + scale_y_discrete(name="", limits = rev(levels(yup$data)), labels=rev(data_labels_twolines[c(4, 5, 1:3, 6:8)]))
+p <- p + scale_x_continuous(name="June Active Storage (1,000 ac-ft)", breaks=seq(0,800,100), sec.axis = sec_axis(name="June Active Storage (%)", trans=~ ((.*1000)/current_active_stor)*100, breaks=seq(0,100,25)), expand = c(0,0))
+p <- p + scale_fill_manual(name="Scenario", values=data_colors[c(4, 5, 1:3, 6:8)])
+p <- p + theme_classic_new(9)
+#p <- p + theme(legend.position="left")
+p <- p + expand_limits(x=c(400, current_active_stor/1000+10))
+p <- p + coord_cartesian(ylim=c(1.2,8.5))
+p
+### Save figures
+ggsave(file.path(storage_output_path,"storage_june_ridge_box.png"),  p, width=7.5, height=4.5, dpi=600)
+
+  
+  
+yup <- stor_base
+yup$data <- factor(yup$data, levels=data_levels, labels=data_labels_twolines)
+
+p <- ggplot(subset(yup, month==6), aes(x = data, y = total_res/1000, fill = data))
+p <- p + geom_boxplot(size=0.3, colour=NA, alpha=0.6)
+p <- p + geom_boxplot(size=0.3, fill=NA)
+p <- p + geom_hline(yintercept=unlist(weber_triggers[c(2,3,4)])/1000, linetype="dotted")
+p <- p + scale_colour_manual(name="Scenario", values=c(data_colors))
+p <- p + scale_fill_manual(name="Scenario", values=c(data_colors))
+p <- p + scale_x_discrete(name="Scenario")
+p <- p + scale_y_continuous(name="June Active Storage (1,000 ac-ft)", breaks=seq(0,800,100), sec.axis = sec_axis(name="June Active Storage (%)", trans=~ ((.*1000)/current_active_stor)*100, breaks=seq(0,100,25)), expand = c(0,0)) 
+p <- p + theme_classic_new()
+p <- p + theme(legend.position="bottom")
+p <- p + guides(colour = guide_legend(nrow = 2, byrow=TRUE), fill = guide_legend(nrow = 2, byrow=TRUE))
+p <- p + expand_limits(y=c(-10, current_active_stor/1000+10))
+p
+
+### Save figures
+ggsave(file.path(storage_output_path,"storage_june_box.png"),  p, width=6.75, height=4.5, dpi=600)
+
+
+
 ### Check plot
-p <- ggplot(subset(stor_percent, data!="base") , aes(colour=data))
-p <- p + geom_line(aes(x=date, y=total_res), size=0.3)
-p <- p + geom_line(data=subset(stor_percent, data=="base"), aes(x=base_date, y=total_res), size=0.3)
+p <- ggplot(subset(stor_base_percent, data!="base") , aes(colour=data))
+p <- p + geom_line(aes(x=date, y=current_res), size=0.3)
+p <- p + geom_line(data=subset(stor_base_percent, data=="base"), aes(x=base_date, y=current_res), size=0.3)
 p <- p + theme_classic_new()
 p
 
 ###########################################################################
 ## Plot Storage Time Series as Area
 ###########################################################################
-area_df <- stor_all %>% 
-	filter(data %in% c("paleo", "observed", "hd")) %>%
-	filter(response == "Base")
+
+area_df <- stor_base %>% 
+	filter(data %in% c("paleo", "observed", "hd"))
 	
 time_test <- area_df$data == "paleo" & area_df$year >= 1905
 area_df <- area_df[!time_test,]
 
 p <- ggplot(area_df, aes(x=date, y=total_res/1000, fill=data))
 p <- p + geom_area( position = "identity", alpha=0.8)
-p <- p + geom_hline(yintercept=0, size=0.2)
+p <- p + geom_hline(yintercept=unlist(weber_triggers[c(2,3,4)])/1000, linetype="dotted")
 #p <- p + geom_line(data=base_df, colour="grey30")
 #p <- p + geom_area( data=base_df, position = "identity", alpha=0.5)
 p <- p + theme_classic_new()
-p <- p + scale_fill_manual(name="Scenario", values= data_colors[c(1, 2, 7)], labels=c( "Reconstructed", "Observed", "Climate Change (HD)"), limits=c("paleo","observed",  "hd"), guide = guide_legend())
+p <- p + scale_fill_manual(name="Scenario", values= data_colors[c(1, 2, 7)], labels=c( "Reconstructed", "Observed", "Climate Change (Hot-Dry)"), limits=c("paleo","observed",  "hd"), guide = guide_legend())
 p <- p + coord_cartesian(xlim=c(as.Date("1425-01-01"), as.Date("2070-01-01")), expand=FALSE)
 p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="50 years"), date_labels = "%Y")
-p <- p + scale_y_continuous(name="System Storage (1,000 ac-ft)", breaks=seq(0,800,100))
+p <- p + scale_y_continuous(name="Total Active Storage (1,000 ac-ft)", breaks=seq(0,800,100), sec.axis = sec_axis(name="Total Active Storage (%)", trans=~ ((.*1000)/current_active_stor)*100, breaks=seq(0,100,25)), expand = c(0,0)) 
 p <- p + theme(legend.position="bottom")
+p <- p + expand_limits(y=c(0, current_active_stor/1000+10))
 p
+
 
 ### Save figures
 ggsave(file.path(storage_output_path,"paleo_future_stor_area_acft_hd_full.png"),  p, width=8, height=3.5, dpi=300)
@@ -258,17 +368,74 @@ ggsave(file.path(storage_output_path,"paleo_future_stor_area_acft_hd_1900.png"),
 ggsave(file.path(storage_output_path,"paleo_future_stor_area_acft_hd_1900.pdf"),  p, width=8, height=3.5)
 ggsave(file.path(storage_output_path,"paleo_future_stor_area_acft_hd_1900.svg"),  p, width=8, height=3.5)
 
+
+area_df <- stor_base %>% 
+	filter(data %in% c("paleo", "observed", "hd")) %>%
+	filter(month == 6)
+	
+time_test <- area_df$data == "paleo" & area_df$year >= 1905
+area_df <- area_df[!time_test,]
+
+p <- ggplot(area_df, aes(x=date, y=total_res/1000, fill=data))
+p <- p + geom_area( position = "identity", alpha=0.8)
+p <- p + geom_hline(yintercept=unlist(weber_triggers[c(2,3,4)])/1000, linetype="dotted")
+#p <- p + geom_line(data=base_df, colour="grey30")
+#p <- p + geom_area( data=base_df, position = "identity", alpha=0.5)
+p <- p + theme_classic_new()
+p <- p + scale_fill_manual(name="Scenario", values= data_colors[c(1, 2, 7)], labels=c( "Reconstructed", "Observed", "Climate Change (Hot-Dry)"), limits=c("paleo","observed",  "hd"), guide = guide_legend())
+p <- p + coord_cartesian(xlim=c(as.Date("1425-01-01"), as.Date("2070-01-01")), expand=FALSE)
+p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="50 years"), date_labels = "%Y")
+p <- p + scale_y_continuous(name="June Active Storage (1,000 ac-ft)", breaks=seq(0,800,100), sec.axis = sec_axis(name="June Active Storage (%)", trans=~ ((.*1000)/current_active_stor)*100, breaks=seq(0,100,25)), expand = c(0,0)) 
+p <- p + theme(legend.position="bottom")
+p <- p + expand_limits(y=c(0, current_active_stor/1000+10))
+p
+
+### Save figures
+ggsave(file.path(storage_output_path,"paleo_future_stor_area_acft_hd_full_june.png"),  p, width=8, height=3.5, dpi=300)
+ggsave(file.path(storage_output_path,"paleo_future_stor_area_acft_hd_full_june.pdf"),  p, width=8, height=3.5)
+ggsave(file.path(storage_output_path,"paleo_future_stor_area_acft_hd_full_june.svg"),  p, width=8, height=3.5)
+
+### Cut to 1900s
+p <- p + coord_cartesian(xlim=c(as.Date("1920-01-01"), as.Date("2066-01-01")))
+p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="10 years"), date_labels = "%Y")
+
+### Save figures
+ggsave(file.path(storage_output_path,"paleo_future_stor_area_acft_hd_1900_june.png"),  p, width=8, height=3.5, dpi=300)
+ggsave(file.path(storage_output_path,"paleo_future_stor_area_acft_hd_1900_june.pdf"),  p, width=8, height=3.5)
+ggsave(file.path(storage_output_path,"paleo_future_stor_area_acft_hd_1900_june.svg"),  p, width=8, height=3.5)
+
+
+
+###########################################################################
+## Create dataframe for triggers
+###########################################################################
+### Add a 6 year buffer for plotting
+trigger_plot <- data.frame(date = rep(c(min(stor_percent$date) %m+% years(-6), max(stor_percent$date) %m+% years(6)), 3))
+trigger_plot$month <- month(trigger_plot$date)
+trigger_plot$year <- year(trigger_plot$date)
+
+### Add water year column
+trigger_plot$wy <- usgs_wateryear(year=trigger_plot$year, month=trigger_plot$month)
+
+### Add triggers
+trigger_plot$trigger_level <- rep(c("Moderate", "Severe", "Extreme"), each=2)
+trigger_plot$trigger_level <- factor(trigger_plot$trigger_level, levels=c("Moderate", "Severe", "Extreme"))
+trigger_plot$res_perc <- rep(c(mod_perc_annual-sev_perc_annual, sev_perc_annual-ext_perc_annual, ext_perc_annual), each=2)
+### This line wasn't previously in here
+trigger_plot$res_stor <- rep(c(mod_annual, sev_annual, ext_annual), each=2)
+
+
 ###########################################################################
 ## Plot Storage Time Series as Line
 ###########################################################################
 line_df <- stor_all  %>% 
 	filter(data %in% c("paleo", "observed", "hd"))
 
-line_df2 <- stor_all  %>% 
-	filter(data %in% c("base")) %>%
-	mutate(date = base_date)
+#line_df2 <- stor_base  %>% #
+#	filter(data %in% c("base")) %>%
+#	mutate(date = base_date)
 
-line_df <- rbind(line_df, line_df2)
+#line_df <- rbind(line_df, line_df2)
 
 for (response_i in response_levels){
 	line_plot <- line_df %>% 
@@ -278,17 +445,29 @@ for (i in seq(1, length(region_levels))) {
 region_i <- as.character(region_levels[i])
 region_plot_name <- region_names[i]
 
-y_name <- paste0(region_plot_name, " Storage (1,000 ac-ft)")
+y_name_left <- paste0(region_plot_name, " Active Storage (1,000 ac-ft)")
+y_name_right <- paste0(region_plot_name, " Active Storage (%)")
 
-p <- ggplot(line_plot, aes(x=date, y=get(region_i)/1000, colour=data))
-p <- p + geom_line(size=0.18)#, alpha=0.8)
+if (i <= 2){
+	y_name_left <- "Active Storage (1,000 ac-ft)"
+	y_name_right <- "Active Storage (%)"
+}
+
+region_stor_i <- active_stor_vec[i]
+trigger_plot$res_stor_region <- trigger_plot$res_perc * region_stor_i
+
+p <- ggplot(line_plot, aes(x=date))
+p <- p + geom_area(data=trigger_plot, aes(y=res_stor_region/1000, fill=trigger_level), alpha=0.85)
+p <- p + geom_line(size=0.18, aes(y=get(region_i)/1000, group=data))#, alpha=0.8)
 #p <- p + geom_hline(yintercept=0, size=0.15)
 p <- p + theme_classic_new()
 p <- p + scale_colour_manual(name="Scenario", values= data_colors[c(1, 2,3, 7)], labels=c( "Reconstructed", "Observed", "Base", "Climate Change (HD)"), limits=c("paleo","observed", "base", "hd"), guide = guide_legend())
+p <- p + scale_fill_manual(name="Storage Trigger", values= trigger_colors, limits= c("Extreme", "Severe", "Moderate"), labels=c("Extreme", "Severe", "Moderate"), guide = guide_legend())
 p <- p + coord_cartesian(xlim=c(as.Date("1425-01-01"), as.Date("2070-01-01")), expand=FALSE) + expand_limits(y=0)
 p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="50 years"), date_labels = "%Y")
-p <- p + scale_y_continuous(name=y_name, breaks=seq(0,800,100))
+p <- p + scale_y_continuous(name=y_name_left, sec.axis = sec_axis(name=y_name_right, trans=~ ((.*1000)/region_stor_i)*100, breaks=seq(0,100,25)),  expand = c(0,0)) 
 p <- p + theme(legend.position="bottom")
+p <- p + expand_limits(y=c(0, region_stor_i/1000+10))
 p
 
 plot_location <- file.path(storage_output_path,paste0("time_series/", response_i))
@@ -307,111 +486,53 @@ p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("21
 ggsave(file.path(plot_location,paste0("stor_timeseries_acft_hd_", region_i, "_", response_i,"_1900.png")),  p, width=8, height=3.5, dpi=300)
 ggsave(file.path(plot_location,paste0("stor_timeseries_acft_hd_", region_i, "_", response_i,"_1900.pdf")),  p, width=8, height=3.5)
 ggsave(file.path(plot_location,paste0("stor_timeseries_acft_hd_", region_i, "_", response_i,"_1900.svg")),  p, width=8, height=3.5)
+
+### Cut to only June
+june_plot <- line_plot %>%
+	filter(month == 6)
+
+y_name_left <- paste0(region_plot_name, " June Active Storage (1,000 ac-ft)")
+y_name_right <- paste0(region_plot_name, " June Active Storage (%)")
+
+if (i <= 2){
+	y_name_left <- "June Active Storage (1,000 ac-ft)"
+	y_name_right <- "June Active Storage (%)"
 }
-}
-
-
-
-###########################################################################
-## Plot Percent Storage Time Series as Line
-###########################################################################
-### Create dataframe for triggers
-### Add a 6 year buffer for plotting
-trigger_plot <- data.frame(date = rep(c(min(stor_percent$date) %m+% years(-6), max(stor_percent$date) %m+% years(6)), 3))
-trigger_plot$month <- month(trigger_plot$date)
-trigger_plot$year <- year(trigger_plot$date)
-
-### Add water year column
-trigger_plot$wy <- usgs_wateryear(year=trigger_plot$year, month=trigger_plot$month)
-
-### Add triggers
-trigger_plot$trigger_level <- rep(c("Moderate", "Severe", "Extreme"), each=2)
-trigger_plot$trigger_level <- factor(trigger_plot$trigger_level, levels=c("Moderate", "Severe", "Extreme"))
-trigger_plot$res_perc <- rep(c(mod_perc_annual-sev_perc_annual, sev_perc_annual-ext_perc_annual, ext_perc_annual), each=2)
-### This line wasn't previously in here
-trigger_plot$res_stor <- rep(c(mod_annual, sev_annual, ext_annual), each=2)
-
-for (response_i in response_levels){
-	response_plot <- stor_percent %>% 
-		filter(response == response_i)
-		
-for (i in seq(1, length(region_levels))) {
-region_i <- as.character(region_levels[i])
-region_plot_name <- region_names[i]
-
-y_name <- paste0(region_plot_name, " Percent Storage ")
-
-### Create percentile plot dataframe
-perc_plot <- response_plot[response_plot$data %in% c("base"),]
-perc_plot$date <- perc_plot$base_date
-
-perc_temp <- response_plot[response_plot$data %in% c("paleo", "observed", "hd"),]
-perc_test <- perc_temp$date < min(perc_plot$date) | perc_temp$date > max(perc_plot$date)
-perc_plot <- rbind(perc_temp[perc_test, ], perc_plot)
-
-p <- ggplot(perc_plot, aes(x=date, y=get(region_i)))
-p <- p + geom_area(data=trigger_plot, aes(y=res_perc, fill=trigger_level))
-p <- p + geom_line(aes(group=data), size=0.14)
-#p <- p + geom_line(data=trigger_plot, aes(y=mod_perc_annual), col="red")
-#p <- p + geom_line(data=trigger_plot, aes(y=ext_perc_annual), col="green")
-#p <- p + geom_line(data=trigger_plot, aes(y=sev_perc_annual), col="blue")
+	
+	
+p <- ggplot(june_plot, aes(x=date))
+p <- p + geom_area(data=trigger_plot, aes(y=res_stor_region/1000, fill=trigger_level), alpha=0.85)
+p <- p + geom_line(size=0.35, aes(y=get(region_i)/1000, group=data))#, alpha=0.8)
 p <- p + theme_classic_new()
+p <- p + scale_colour_manual(name="Scenario", values= data_colors[c(1, 2,3, 7)], labels=c( "Reconstructed", "Observed", "Base", "Climate Change (HD)"), limits=c("paleo","observed", "base", "hd"), guide = guide_legend())
 p <- p + scale_fill_manual(name="Storage Trigger", values= trigger_colors, limits= c("Extreme", "Severe", "Moderate"), labels=c("Extreme", "Severe", "Moderate"), guide = guide_legend())
-p <- p + coord_cartesian(xlim=c(as.Date("1428-01-01"), as.Date("2070-01-01")), ylim=c(0,1), expand=FALSE)
+p <- p + coord_cartesian(xlim=c(as.Date("1425-01-01"), as.Date("2070-01-01")), expand=FALSE) + expand_limits(y=0)
 p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="50 years"), date_labels = "%Y")
-p <- p + scale_y_continuous(name=y_name, breaks=seq(0,1,0.1), labels=percent)
+p <- p + scale_y_continuous(name=y_name_left, sec.axis = sec_axis(name=y_name_right, trans=~ ((.*1000)/region_stor_i)*100, breaks=seq(0,100,25)),  expand = c(0,0)) 
 p <- p + theme(legend.position="bottom")
+p <- p + expand_limits(y=c(0, region_stor_i/1000+10))
 p
 
 plot_location <- file.path(storage_output_path,paste0("time_series/", response_i))
 dir.create(plot_location, recursive=TRUE, showWarnings=FALSE)
 
 ### Save figures
-ggsave(file.path(plot_location,paste0("stor_timeseries_percent_hd_", region_i, "_", response_i,".png")),  p, width=8, height=3.5, dpi=300)
-ggsave(file.path(plot_location,paste0("stor_timeseries_percent_hd_", region_i, "_", response_i,".pdf")),  p, width=8, height=3.5)
-ggsave(file.path(plot_location,paste0("stor_timeseries_percent_hd_", region_i, "_", response_i,".svg")),  p, width=8, height=3.5)
+ggsave(file.path(plot_location,paste0("stor_timeseries_acft_hd_", region_i, "_", response_i,"_june.png")),  p, width=8, height=3.5, dpi=300)
+ggsave(file.path(plot_location,paste0("stor_timeseries_acft_hd_", region_i, "_", response_i,"_june.pdf")),  p, width=8, height=3.5)
+ggsave(file.path(plot_location,paste0("stor_timeseries_acft_hd_", region_i, "_", response_i,"_june.svg")),  p, width=8, height=3.5)
 
 ### Cut to 1900s
 p <- p + coord_cartesian(xlim=c(as.Date("1920-01-01"), as.Date("2066-01-01")), expand=FALSE) + expand_limits(y=0)
 p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="10 years"), date_labels = "%Y")
 
 ### Save figures
-ggsave(file.path(plot_location,paste0("stor_timeseries_percent_hd_", region_i, "_", response_i,"_1900.png")),  p, width=8, height=3.5, dpi=300)
-ggsave(file.path(plot_location,paste0("stor_timeseries_percent_hd_", region_i, "_", response_i,"_1900.pdf")),  p, width=8, height=3.5)
-ggsave(file.path(plot_location,paste0("stor_timeseries_percent_hd_", region_i, "_", response_i,"_1900.svg")),  p, width=8, height=3.5)
+ggsave(file.path(plot_location,paste0("stor_timeseries_acft_hd_", region_i, "_", response_i,"_1900_june.png")),  p, width=8, height=3.5, dpi=300)
+ggsave(file.path(plot_location,paste0("stor_timeseries_acft_hd_", region_i, "_", response_i,"_1900_june.pdf")),  p, width=8, height=3.5)
+ggsave(file.path(plot_location,paste0("stor_timeseries_acft_hd_", region_i, "_", response_i,"_1900_june.svg")),  p, width=8, height=3.5)
+
+
 }
 }
-
-
-###########################################################################
-## This doesn't do anything, consider deleting
-###########################################################################
-
-names(perc_plot)[2:9] <- as.character(total_storage$Name)
-yup <-  melt(perc_plot, id.vars = c("date", "month", "year", "wy", "data"))
-res_test <- yup$variable %in% total_storage$Name
-yup <- yup[res_test,]
- 
-### To plot
-p <- ggplot(yup, aes(x=date, y=value))
-p <- p + geom_area(data=trigger_plot, aes(y=res_perc, fill=trigger_level), alpha=0.85)
-p <- p + geom_line(aes(group=data), size=0.12)
-#p <- p + geom_line(data=trigger_plot, aes(y=mod_perc_annual), col="red")
-#p <- p + geom_line(data=trigger_plot, aes(y=ext_perc_annual), col="green")
-#p <- p + geom_line(data=trigger_plot, aes(y=sev_perc_annual), col="blue")
-p <- p + theme_classic_new()
-p <- p + scale_fill_manual(name="Storage Trigger", values= c("#f03b20",  "#feb24c", "#ffeda0"), limits= c("Extreme", "Severe", "Moderate"), labels=c("Extreme", "Severe", "Moderate"), guide = guide_legend())
-p <- p + coord_cartesian(xlim=c(as.Date("1428-01-01"), as.Date("2070-01-01")), ylim=c(0,1), expand=FALSE)
-p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="50 years"), date_labels = "%Y")
-p <- p + scale_y_continuous(name="Percent of Total Storage", breaks=seq(0,1,0.1), labels=percent)
-p <- p + theme(legend.position="bottom")
-p <- p + facet_wrap(~variable, nrow = 4)
-p
-
-### Save figures
-#ggsave(file.path(storage_output_path,"paleo_future_stor_perc.png"),  p, width=11, height=9, dpi=300)
-#ggsave(file.path(storage_output_path,"paleo_future_stor_perc.pdf"),  p, width=11, height=9)
-
 
 
 
@@ -430,19 +551,20 @@ area_region$data <- factor(area_region$data)
 area_region$res <- factor(area_region$res, levels=c("upper_ogden", "upper_weber", "lower"))
 	
 p <- ggplot(subset(area_region, data=="observed"), aes(x=date, y=value/1000, fill=res))
-#p <- ggplot(yup, aes(x=date, y=value/1000, fill=variable))
 p <- p + geom_area()
 p <- p + geom_area(data=subset(area_region, data=="paleo" & date < as.Date("1905-01-01")))
 p <- p + geom_area(data=subset(area_region, data=="observed" & date >= as.Date("1905-01-01")))
 p <- p + geom_area(data=subset(area_region, data=="hd"))
-p <- p + geom_area(data=subset(area_region, data=="base"), aes(x=base_date))
-p <- p + geom_line(data=trigger_plot, aes(y=res_stor/1000, group=trigger_level, fill=NA), colour="grey30", linetype="longdash", size=0.35)
+#p <- p + geom_area(data=subset(area_region, data=="base"), aes(x=base_date))
+#p <- p + geom_line(data=trigger_plot, aes(y=res_stor/1000, group=trigger_level, fill=NA), colour="grey30", linetype="longdash", size=0.35)
+p <- p + geom_hline(yintercept=unlist(weber_triggers[c(2,3,4)])/1000, colour="grey30", linetype="longdash", size=0.35)
 p <- p + theme_classic_new()
 p <- p + scale_fill_manual(name="Region", values= res_colors[c(1,3,2)], labels=c("Upper Ogden", "Upper Weber", "Lower Weber"), breaks=c("upper_ogden", "upper_weber", "lower"), guide = guide_legend())
 p <- p + coord_cartesian(xlim=c(as.Date("1425-01-01"), as.Date("2070-01-01")), expand=FALSE)
 p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="50 years"), date_labels = "%Y")
-p <- p + scale_y_continuous(name="System Storage (1,000 ac-ft)", breaks=seq(0,800,100))
+p <- p + scale_y_continuous(name="Total Active Storage (1,000 ac-ft)", breaks=seq(0,800,100), sec.axis = sec_axis(name="Total Active Storage (%)", trans=~ ((.*1000)/current_active_stor)*100, breaks=seq(0,100,25)), expand = c(0,0)) 
 p <- p + theme(legend.position="bottom")
+p <- p + expand_limits(y=c(0, current_active_stor/1000+10))
 p
 
 
@@ -462,6 +584,45 @@ p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("21
 ggsave(file.path(plot_location,paste0("stor_byregion_timeseries_percent_hd_", response_i,"_1900.png")),  p, width=8, height=3.5, dpi=300)
 ggsave(file.path(plot_location,paste0("stor_byregion_timeseries_percent_hd_", response_i,"_1900.pdf")),  p, width=8, height=3.5)
 ggsave(file.path(plot_location,paste0("stor_byregion_timeseries_percent_hd_", response_i,"_1900.svg")),  p, width=8, height=3.5)
+
+area_region <- area_region %>% 
+	mutate(month = month(date)) %>%
+	filter(month == 6)
+	
+p <- ggplot(subset(area_region, data=="observed"), aes(x=date, y=value/1000, fill=res))
+p <- p + geom_area()
+p <- p + geom_area(data=subset(area_region, data=="paleo" & date < as.Date("1905-01-01")))
+p <- p + geom_area(data=subset(area_region, data=="observed" & date >= as.Date("1905-01-01")))
+p <- p + geom_area(data=subset(area_region, data=="hd"))
+#p <- p + geom_area(data=subset(area_region, data=="base"), aes(x=base_date))
+#p <- p + geom_line(data=trigger_plot, aes(y=res_stor/1000, group=trigger_level, fill=NA), colour="grey30", linetype="longdash", size=0.35)
+p <- p + geom_hline(yintercept=unlist(weber_triggers[c(2,3,4)])/1000, colour="grey30", linetype="longdash", size=0.35)
+p <- p + theme_classic_new()
+p <- p + scale_fill_manual(name="Region", values= res_colors[c(1,3,2)], labels=c("Upper Ogden", "Upper Weber", "Lower Weber"), breaks=c("upper_ogden", "upper_weber", "lower"), guide = guide_legend())
+p <- p + coord_cartesian(xlim=c(as.Date("1425-01-01"), as.Date("2070-01-01")), expand=FALSE)
+p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="50 years"), date_labels = "%Y")
+p <- p + scale_y_continuous(name="June Active Storage (1,000 ac-ft)", breaks=seq(0,800,100), sec.axis = sec_axis(name="June Active Storage (%)", trans=~ ((.*1000)/current_active_stor)*100, breaks=seq(0,100,25)), expand = c(0,0)) 
+p <- p + theme(legend.position="bottom")
+p <- p + expand_limits(y=c(0, current_active_stor/1000+10))
+p
+
+
+plot_location <- file.path(storage_output_path,paste0("time_series_regions/", response_i))
+dir.create(plot_location, recursive=TRUE, showWarnings=FALSE)
+
+### Save figures
+ggsave(file.path(plot_location,paste0("stor_byregion_timeseries_percent_hd_", response_i,"_june.png")),  p, width=8, height=3.5, dpi=300)
+ggsave(file.path(plot_location,paste0("stor_byregion_timeseries_percent_hd_", response_i,"_june.pdf")),  p, width=8, height=3.5)
+ggsave(file.path(plot_location,paste0("stor_byregion_timeseries_percent_hd_", response_i,"_june.svg")),  p, width=8, height=3.5)
+
+### Cut to 1900s
+p <- p + coord_cartesian(xlim=c(as.Date("1920-01-01"), as.Date("2066-01-01")), expand=FALSE) + expand_limits(y=0)
+p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="10 years"), date_labels = "%Y")
+
+### Save figures
+ggsave(file.path(plot_location,paste0("stor_byregion_timeseries_percent_hd_", response_i,"_1900_june.png")),  p, width=8, height=3.5, dpi=300)
+ggsave(file.path(plot_location,paste0("stor_byregion_timeseries_percent_hd_", response_i,"_1900_june.pdf")),  p, width=8, height=3.5)
+ggsave(file.path(plot_location,paste0("stor_byregion_timeseries_percent_hd_", response_i,"_1900_june.svg")),  p, width=8, height=3.5)
 
 }
 
@@ -546,7 +707,8 @@ area_df2 <- stor_all  %>%
 
 area_df <- rbind(area_df, area_df)
 area_plot <- area_df %>% 
-		filter(response == "Base")
+		filter(response == "Base") %>%
+		filter(month == 6)
 		
 #plot_test <- stor_all$data %in% c("observed", "paleo")
 #cc_test <- stor_all$data %in% c("base", "hd", "hw", "wd", "ww")
@@ -559,11 +721,12 @@ area_plot <- area_df %>%
 
 #area_df <- rbind(cc_df[cc_df$data %in% c("hd", "hw"),], stor_all[stor_all$data %in% c("paleo", "observed"),])
 
-p <- ggplot(area_plot, aes(x=date, y=-total_res_deficit/1000, fill=data))
+p <- ggplot(area_plot, aes(x=date, y=-trigger_deficit/1000, fill=data))
 p <- p + geom_area( position = "identity", alpha=0.8)
 p <- p + geom_hline(yintercept=0, size=0.2)
-p <- p + geom_hline(yintercept=-max_stor/1000, size=0.4, colour="black", linetype="longdash")
-p <- p + geom_line(data=base_df, colour="grey30")
+p <- p + geom_hline(yintercept=-current_active_stor/1000, size=0.4, colour="black", linetype="longdash")
+
+#p <- p + geom_line(data=base_df, colour="grey30")
 #p <- p + geom_area( data=base_df, position = "identity", alpha=0.5)
 p <- p + theme_classic_new()
 #p <- p + scale_fill_manual(name="Scenario", values= c("grey30", "grey30", cc_colors), labels=c("Observed", "Base", "HD", "HW", "WD", "WW", "Reconst" ))
@@ -571,6 +734,13 @@ p <- p + scale_fill_manual(name="Scenario", values= c("#D55E00", "#56B4E9", "gre
 #p <- p + coord_cartesian(xlim=c(as.Date("1920-01-01"), as.Date("2018-01-01")))
 p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="50 years"), date_labels = "%Y")
 p <- p + scale_y_continuous(name="System Storage Volume Below Moderate Trigger (1,000 ac-ft)", breaks=seq(-10000,500,50))
+
+
+p <- p + scale_y_continuous(name="June Active Storage (1,000 ac-ft)", breaks=seq(-10000,500,50), sec.axis = sec_axis(name="June Active Storage (%)", trans=~ (((.*-1000)+380000)/current_active_stor)*100, breaks=seq(0,100,25)), expand = c(0,0)) 
+
+-weber_triggers[2]
+
+
 p <- p + theme(legend.position="bottom")
 p
 
@@ -598,7 +768,7 @@ area_df <- rbind(cc_df[cc_df$data %in% c("wd", "ww"),], stor_all[stor_all$data %
 p <- ggplot(area_df, aes(x=date, y=-system_def/1000, fill=data))
 p <- p + geom_area( position = "identity", alpha=0.8)
 p <- p + geom_hline(yintercept=0, size=0.2)
-p <- p + geom_hline(yintercept=-max_stor/1000, size=0.4, colour="black", linetype="longdash")
+p <- p + geom_hline(yintercept=-current_active_stor/1000, size=0.4, colour="black", linetype="longdash")
 p <- p + geom_line(data=base_df, colour="grey30")
 #p <- p + geom_area( data=base_df, position = "identity", alpha=0.5)
 p <- p + theme_classic_new()
@@ -629,13 +799,14 @@ ggsave(file.path(write_output_base_path,"paleo_future_stor_deficit_area_acft_war
 ## Plot Area Time Series for climate change
 ###########################################################################
 
-plot_test <- stor_all$data %in% c( "hd", "hw", "wd", "ww")
+plot_test <- stor_base$data %in% c( "hd", "hw", "ct", "wd", "ww")
 
-area_df <- stor_all[plot_test,]
-area_df$data <- factor(area_df$data, levels=c( "ww", "hw", "wd", "hd"), labels=c("Warm-Wet", "Hot-Wet", "Warm-Dry", "Hot-Dry"))
+area_df <- stor_base[plot_test,]
+area_df$data <- factor(area_df$data, levels=c( "ww", "hw","ct", "wd", "hd"), labels=c("Warm-Wet", "Hot-Wet", "Median", "Warm-Dry", "Hot-Dry"))
 
-line_df <- stor_all[stor_all$data %in% "base", ]
-line_df <- do.call("rbind", replicate(4, line_df, simplify = FALSE))
+line_df <- stor_base[stor_base$data %in% "base", ]
+line_df$date <- line_df$date %m+% years(55)
+line_df <- do.call("rbind", replicate(5, line_df, simplify = FALSE))
 line_df$data <- area_df$data
 line_df$precip <- area_df$precip
 line_df$temp <- area_df$temp
@@ -645,19 +816,30 @@ p <- p + geom_area(aes(fill=data))
 p <- p + geom_hline(yintercept=0)
 p <- p + geom_line(data=line_df, colour="black")#, linetype="longdash")
 p <- p + theme_classic_new()
-p <- p + scale_fill_manual(name="Scenario", values= cc_colors[c(4,2,3,1)], labels=c("WW", "HW", "WD", "HD"), breaks=c("ww", "hw", "wd", "hd"))
+p <- p + scale_fill_manual(name="Scenario", values= cc_colors, labels=c("WW", "HW", "CT", "WD", "HD"), breaks=c("ww", "hw", "ct", "wd", "hd"))
 #p <- p + coord_cartesian(xlim=c(as.Date("1920-01-01"), as.Date("2018-01-01")))
 p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="5 years"), date_labels = "%Y")
-p <- p + scale_y_continuous(name="System Storage (1,000 ac-ft)", breaks=seq(-5000,5000,100))
+p <- p + scale_y_continuous(name="Active Storage (1,000 ac-ft)", breaks=seq(-5000,5000,200))
 p <- p + facet_grid(data ~ .)
 p
 
+#, sec.axis = sec_axis(name="Total Active Storage (%)", trans=~ ((.*1000)/current_active_stor)*100, breaks=seq(0,100,25)), expand = c(0,0)
+
+
 ### Save figures
-ggsave(file.path(write_output_base_path,"clim_change_storage_area_acft_vert.png"),  p, width=7, height=6, dpi=300)
-ggsave(file.path(write_output_base_path,"clim_change_storage_area_acft_vert.pdf"),  p, width=7, height=6)
-ggsave(file.path(write_output_base_path,"clim_change_storage_area_acft_vert.svg"),  p, width=7, height=6)
+ggsave(file.path(write_output_base_path,"clim_change_storage_area_acft_vert.png"),  p, width=7.5, height=7, dpi=300)
+ggsave(file.path(write_output_base_path,"clim_change_storage_area_acft_vert.pdf"),  p, width=7.5, height=7)
+ggsave(file.path(write_output_base_path,"clim_change_storage_area_acft_vert.svg"),  p, width=7.5, height=7)
 
-
+p <- ggplot(subset(area_df, temp != "Median"), aes(x=date, y=total_res/1000))
+p <- p + geom_area(aes(fill=data))
+p <- p + geom_hline(yintercept=0)
+p <- p + geom_line(data=subset(line_df, temp != "Median"), colour="black")#, linetype="longdash")
+p <- p + theme_classic_new()
+p <- p + scale_fill_manual(name="Scenario", values= cc_colors[c(1, 2, 4, 5)], labels=c("WW", "HW", "WD", "HD"), breaks=c("ww", "hw", "wd", "hd"))
+#p <- p + coord_cartesian(xlim=c(as.Date("1920-01-01"), as.Date("2018-01-01")))
+p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="5 years"), date_labels = "%Y")
+p <- p + scale_y_continuous(name="Active Storage (1,000 ac-ft)", breaks=seq(-5000,5000,200))
 p <- p + facet_grid(precip ~ temp)
 
 ### Save figures
@@ -665,6 +847,46 @@ ggsave(file.path(write_output_base_path,"clim_change_storage_area_acft_square.pn
 ggsave(file.path(write_output_base_path,"clim_change_storage_area_acft_square.pdf"),  p, width=8, height=6)
 ggsave(file.path(write_output_base_path,"clim_change_storage_area_acft_square.svg"),  p, width=8, height=6)
 
+
+###########################################################################
+## Plot Area Time Series for climate change with June Only
+###########################################################################
+
+p <- ggplot(subset(area_df, month==6), aes(x=date, y=total_res/1000))
+p <- p + geom_area(aes(fill=data))
+#p <- p + geom_hline(yintercept=unlist(weber_triggers[c(2,3,4)])/1000, colour="grey30", size=0.35) #linetype="longdash", 
+#p <- p + geom_hline(yintercept=unlist(weber_triggers[2])/1000, colour="grey30", linetype="longdash", size=0.35)
+p <- p + geom_hline(yintercept=0)
+p <- p + geom_line(data=subset(line_df, month==6), colour="black")#, linetype="longdash")
+#p <- p + geom_hline(yintercept=unlist(weber_triggers[c(2,3,4)])/1000, colour="grey30", linetype="longdash", size=0.35)
+p <- p + theme_classic_new()
+p <- p + scale_fill_manual(name="Scenario", values= cc_colors, labels=c("WW", "HW", "CT", "WD", "HD"), breaks=c("ww", "hw", "ct", "wd", "hd"))
+#p <- p + coord_cartesian(xlim=c(as.Date("1920-01-01"), as.Date("2018-01-01")))
+p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="5 years"), date_labels = "%Y")
+p <- p + scale_y_continuous(name="June Active Storage (1,000 ac-ft)", breaks=seq(-5000,5000,200))
+p <- p + facet_grid(data ~ .)
+p
+
+### Save figures
+ggsave(file.path(write_output_base_path,"clim_change_storage_area_acft_vert_june.png"),  p, width=7, height=7, dpi=300)
+ggsave(file.path(write_output_base_path,"clim_change_storage_area_acft_vert_june.pdf"),  p, width=7, height=7)
+ggsave(file.path(write_output_base_path,"clim_change_storage_area_acft_vert_june.svg"),  p, width=7, height=7)
+
+p <- ggplot(subset(area_df, temp != "Median" & month==6), aes(x=date, y=total_res/1000))
+p <- p + geom_area(aes(fill=data))
+p <- p + geom_hline(yintercept=0)
+p <- p + geom_line(data=subset(line_df, temp != "Median" & month==6), colour="black")#, linetype="longdash")
+p <- p + theme_classic_new()
+p <- p + scale_fill_manual(name="Scenario", values= cc_colors[c(1, 2, 4, 5)], labels=c("WW", "HW", "WD", "HD"), breaks=c("ww", "hw", "wd", "hd"))
+#p <- p + coord_cartesian(xlim=c(as.Date("1920-01-01"), as.Date("2018-01-01")))
+p <- p + scale_x_date(name="Date", breaks=seq(as.Date("1200-01-01"), as.Date("2100-01-01"), by="5 years"), date_labels = "%Y")
+p <- p + scale_y_continuous(name="June Active Storage (1,000 ac-ft)", breaks=seq(-5000,5000,200))
+p <- p + facet_grid(precip ~ temp)
+
+### Save figures
+ggsave(file.path(write_output_base_path,"clim_change_storage_area_acft_square_june.png"),  p, width=8, height=6, dpi=300)
+ggsave(file.path(write_output_base_path,"clim_change_storage_area_acft_square_june.pdf"),  p, width=8, height=6)
+ggsave(file.path(write_output_base_path,"clim_change_storage_area_acft_square_june.svg"),  p, width=8, height=6)
 
 
 
@@ -681,7 +903,7 @@ line_df$value <- line_df$total_res
 p <- ggplot(area_region, aes(x=date, y=value/1000))
 p <- p + geom_area(aes(fill=variable))
 #p <- p + geom_hline(yintercept=0)
-p <- p + geom_line(data=line_df, colour="black")#, linetype="longdash")
+#p <- p + geom_line(data=line_df, colour="black")#, linetype="longdash")
 p <- p + theme_classic_new()
 p <- p + scale_fill_manual(name="Region", values= res_colors, labels=c("Upper Ogden", "Upper Weber", "Lower Weber"), guide = guide_legend())
 p <- p + theme(legend.position="bottom")
