@@ -15,7 +15,7 @@
 ###  Check for necessary packages and install if needed
 ###########################################################################
 ### Set a list of packages
-list_of_packages <- c("lubridate", "tidyverse", "ggplot2", "dataRetrieval", "devtools", "readxl", "scales", "svglite", "here", "data.table")
+list_of_packages <- c("lubridate", "tidyverse", "ggplot2", "dataRetrieval", "devtools", "readxl", "scales", "svglite", "here", "data.table", "ggrepel", "cluster", "ggdendro", "ade4", "dendextend", "ggsci", "reshape2")
 
 	
 ### Determine which packages are missing
