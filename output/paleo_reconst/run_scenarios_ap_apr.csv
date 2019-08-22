@@ -1,0 +1,7 @@
+"site","method","data","predictors","site_name","model_name","reg_eq"
+"10128500","ap","rec","NA","weber","10128500_ap_rec",NA
+"10128500","apr","rec","flow_lag","weber","10128500_apr_rec_flow_lag","l(flow, seq(-1,1))"
+"10128500","apr","rec","clim_only","weber","10128500_apr_rec_clim_only","l(flow, seq(-1,1)) + ENSO + ENSO_short"
+"10128500","apr","rec","clim_only_lag","weber","10128500_apr_rec_clim_only_lag","l(flow, seq(-1,1)) + l(ENSO,seq(-1,1)) + l(ENSO_short,seq(-1,1))"
+"10128500","apr","rec","clim_pca_impute","weber","10128500_apr_rec_clim_pca_impute","l(flow, seq(-1,1)) + ENSO + ENSO_short + PC1 + PC2 + PC3 + PC4 + PC5 + PC6 + PC7 + PC8 + PC9"
+"10128500","apr","rec","clim_pca_impute_lag","weber","10128500_apr_rec_clim_pca_impute_lag","l(flow, seq(-1,1)) + l(ENSO,seq(-1,1)) + l(ENSO_short,seq(-1,1)) + l(PC1,seq(-1,1)) + l(PC2,seq(-1,1)) + l(PC3,seq(-1,1)) + l(PC4,seq(-1,1)) + l(PC5,seq(-1,1)) + l(PC6,seq(-1,1)) + l(PC7,seq(-1,1)) + l(PC8,seq(-1,1)) + l(PC9,seq(-1,1))"
